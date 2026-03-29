@@ -34,6 +34,8 @@ From `C:\Users\user\yanp-tui`:
 go run -buildvcs=false ./cmd/yanp -vault .\testdata\sample-vault
 ```
 
+For normal use, point the app at your own private real vault. See [docs/VAULTS.md](C:\Users\user\yanp-tui\docs\VAULTS.md) and [config.example.json](C:\Users\user\yanp-tui\config.example.json).
+
 ## Key TUI Controls
 
 - `j` / `k`: move selection
@@ -75,6 +77,8 @@ This produces:
 - `internal/ui`: Bubble Tea terminal interface
 - `internal/vault`: indexing, parsing, resolution, publish, and rename logic
 - `docs/DEVLOG.md`: development log
+- `docs/VAULTS.md`: sample-vault vs real-vault guidance
+- `config.example.json`: example config for your own real vault path
 - `testdata/sample-vault`: dogfood vault and examples
 
 ## Release Notes

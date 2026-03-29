@@ -2,7 +2,6 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 )
@@ -36,7 +35,7 @@ func Load() (Config, error) {
 
 	raw, err := os.ReadFile(configPath)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if os.IsNotExist(err) {
 			return cfg, nil
 		}
 		return cfg, err
@@ -61,5 +60,5 @@ func path() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".jot", "config.json"), nil
+	return filepath.Join(home, ".yanp", "config.json"), nil
 }

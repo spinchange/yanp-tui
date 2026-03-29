@@ -1,0 +1,11 @@
+{
+  "vault": "D:\\path\\to\\your-real-vault",
+  "editor": "your-editor-command",
+  "noOpen": false,
+  "defaults": {
+    "staleDays": 30,
+    "dashboardLimit": 5
+  },
+  "templates": "D:\\path\\to\\your-real-vault\\templates",
+  "queries": "D:\\path\\to\\your-real-vault\\saved-queries.json"
+}

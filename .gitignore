@@ -1,5 +1,7 @@
 .git
-dist/
+dist/*
+!dist/yanp.exe
 tmp/
 *.exe
+!dist/yanp.exe
 *.test

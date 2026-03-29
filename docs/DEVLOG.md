@@ -22,6 +22,7 @@ Prepared `yanp-tui` for a first alpha-style release as `v0.1.0-alpha.1`.
 - Added conflict-resolution tests and fixed title-vs-filename precedence behavior.
 - Added `build.ps1` to produce a Windows binary and release zip.
 - Surfaced vault conflict health in the dashboard through a dedicated health report view.
+- Documented the distinction between the tracked `sample-vault` and a user-chosen real private vault.
 
 ### Notes
 
