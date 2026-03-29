@@ -6,6 +6,18 @@
 
 Prepared `yanp-tui` for a first alpha-style release as `v0.1.0-alpha.1`.
 
+### Follow-up release
+
+Prepared `v0.1.0-alpha.2` as a parser and packaging follow-up release.
+
+### What changed in alpha.2
+
+- Fixed slug generation so `/` and `\` no longer leak into note filenames on Windows.
+- Normalized CRLF frontmatter parsing so metadata is read cleanly from Windows-authored notes.
+- Reworked inline-code stripping so escaped backticks and multi-backtick spans do not suppress real tag extraction.
+- Added regression tests for slash-containing slugs, CRLF frontmatter, and escaped backtick tag extraction.
+- Updated release metadata and rebuilt the Windows artifact set for `v0.1.0-alpha.2`.
+
 ### What shipped into this milestone
 
 - Built a Go PKM tool around the YANP vault spec.

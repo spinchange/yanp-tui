@@ -48,6 +48,43 @@ func TestExtractInlineTagsSkipsCode(t *testing.T) {
 	}
 }
 
+func TestSlugifyReplacesPathSeparators(t *testing.T) {
+	slug := Slugify("Foo / Bar\\Baz")
+	if slug != "foo-bar-baz" {
+		t.Fatalf("expected foo-bar-baz, got %q", slug)
+	}
+}
+
+func TestSplitFrontmatterNormalizesCRLF(t *testing.T) {
+	raw := []byte("---\r\ntitle: Test\r\naliases:\r\n  - Alias\r\n---\r\n\r\nBody\r\n")
+
+	fm, body, ok := splitFrontmatter(raw)
+	if !ok {
+		t.Fatalf("expected frontmatter to be parsed")
+	}
+	if strings.Contains(string(fm), "\r") {
+		t.Fatalf("expected normalized frontmatter, got %q", string(fm))
+	}
+	if strings.Contains(string(body), "\r") {
+		t.Fatalf("expected normalized body, got %q", string(body))
+	}
+	if string(body) != "\nBody\n" {
+		t.Fatalf("expected normalized body content, got %q", string(body))
+	}
+}
+
+func TestExtractInlineTagsHandlesEscapedAndDoubleBackticks(t *testing.T) {
+	body := "Escaped \\`marker and #keep plus ``#ignore`` and `#also-ignore` and #work."
+
+	tags := ExtractInlineTags(body)
+	if len(tags) != 2 {
+		t.Fatalf("expected 2 tags, got %v", tags)
+	}
+	if tags[0] != "keep" || tags[1] != "work" {
+		t.Fatalf("expected [keep work], got %v", tags)
+	}
+}
+
 func TestPublishTransformsWikilinks(t *testing.T) {
 	root := filepath.Join("..", "..", "testdata", "sample-vault")
 	v, err := Load(root)

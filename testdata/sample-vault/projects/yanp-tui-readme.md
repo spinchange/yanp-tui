@@ -20,9 +20,9 @@ This note mirrors the application README for dogfooding inside the vault.
 
 ## Release Target
 
-- Version: `v0.1.0-alpha.1`
+- Version: `v0.1.0-alpha.2`
 - Windows artifact: `dist\yanp.exe`
-- Release package: `dist\yanp-v0.1.0-alpha.1-windows-amd64.zip`
+- Release package: `dist\yanp-v0.1.0-alpha.2-windows-amd64.zip`
 
 ## Core Features
 

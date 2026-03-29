@@ -17,7 +17,7 @@
 ## Packaging
 
 - Confirm `dist\yanp.exe` exists
-- Confirm `dist\yanp-v0.1.0-alpha.1-windows-amd64.zip` exists
+- Confirm `dist\yanp-v0.1.0-alpha.2-windows-amd64.zip` exists
 - Confirm the zip contains:
   - `yanp.exe`
   - `README.md`
@@ -27,9 +27,9 @@
 
 - Create or confirm the remote repository
 - Push the default branch
-- Create a Git tag for `v0.1.0-alpha.1`
+- Create a Git tag for `v0.1.0-alpha.2`
 - Upload the zip artifact
-- Paste in the release notes from `docs\RELEASE_NOTES_v0.1.0-alpha.1.md`
+- Paste in the release notes from `docs\RELEASE_NOTES_v0.1.0-alpha.2.md`
 
 ## After Release
 

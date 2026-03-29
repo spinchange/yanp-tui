@@ -4,7 +4,7 @@
 
 YANP-TUI stands for `Yet Another Notes Project - Terminal User Interface`.
 
-This project is currently shaped as an early preview release: `v0.1.0-alpha.1`.
+This project is currently shaped as an early preview release: `v0.1.0-alpha.2`.
 
 ## Current Status
 
@@ -32,12 +32,12 @@ This project is currently shaped as an early preview release: `v0.1.0-alpha.1`.
 
 You can download the Windows build from the GitHub release page:
 
-- [v0.1.0-alpha.1 release](https://github.com/spinchange/yanp-tui/releases/tag/v0.1.0-alpha.1)
+- [v0.1.0-alpha.2 release](https://github.com/spinchange/yanp-tui/releases/tag/v0.1.0-alpha.2)
 
 You have two options:
 
 1. Download `yanp.exe` directly and run it
-2. Download `yanp-v0.1.0-alpha.1-windows-amd64.zip`, extract it, and run `yanp.exe`
+2. Download `yanp-v0.1.0-alpha.2-windows-amd64.zip`, extract it, and run `yanp.exe`
 
 For normal use, point the app at your own private real vault. See [docs/VAULTS.md](C:\Users\user\yanp-tui\docs\VAULTS.md) and [config.example.json](C:\Users\user\yanp-tui\config.example.json).
 
@@ -89,7 +89,7 @@ go run -buildvcs=false ./cmd/yanp -vault .\testdata\sample-vault
 This produces:
 
 - `dist\yanp.exe`
-- `dist\yanp-v0.1.0-alpha.1-windows-amd64.zip`
+- `dist\yanp-v0.1.0-alpha.2-windows-amd64.zip`
 
 ## Project Layout
 
@@ -107,7 +107,7 @@ This produces:
 
 This repo is currently aimed at a small first release in the style of:
 
-- version: `v0.1.0-alpha.1`
+- version: `v0.1.0-alpha.2`
 - platform artifact: Windows `amd64`
 - distribution: zipped binary plus project docs
 
@@ -118,7 +118,7 @@ This repo is currently aimed at a small first release in the style of:
 
 ## Next Milestone
 
-The current working target after `v0.1.0-alpha.1` is `v0.2.0`.
+The current working target after `v0.1.0-alpha.2` is `v0.2.0`.
 
 Planned focus:
 

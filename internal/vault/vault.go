@@ -160,7 +160,8 @@ func splitFrontmatter(raw []byte) ([]byte, []byte, bool) {
 	if !bytes.HasPrefix(raw, []byte("---\n")) && !bytes.HasPrefix(raw, []byte("---\r\n")) {
 		return nil, raw, false
 	}
-	lines := strings.Split(string(raw), "\n")
+	content := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	lines := strings.Split(content, "\n")
 	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
 		return nil, raw, false
 	}
@@ -234,17 +235,53 @@ func ExtractInlineTags(body string) []string {
 
 func stripInlineCode(line string) string {
 	var out strings.Builder
-	inCode := false
-	for _, r := range line {
-		if r == '`' {
-			inCode = !inCode
+	for i := 0; i < len(line); {
+		if line[i] != '`' || isEscapedBacktick(line, i) {
+			out.WriteByte(line[i])
+			i++
 			continue
 		}
-		if !inCode {
-			out.WriteRune(r)
+
+		runLen := 1
+		for i+runLen < len(line) && line[i+runLen] == '`' {
+			runLen++
 		}
+		closeIdx := findClosingBacktickRun(line, i+runLen, runLen)
+		if closeIdx == -1 {
+			out.WriteString(line[i : i+runLen])
+			i += runLen
+			continue
+		}
+		i = closeIdx + runLen
 	}
 	return out.String()
+}
+
+func isEscapedBacktick(line string, idx int) bool {
+	backslashes := 0
+	for i := idx - 1; i >= 0 && line[i] == '\\'; i-- {
+		backslashes++
+	}
+	return backslashes%2 == 1
+}
+
+func findClosingBacktickRun(line string, start, runLen int) int {
+	for i := start; i < len(line); i++ {
+		if line[i] != '`' || isEscapedBacktick(line, i) {
+			continue
+		}
+		match := true
+		for j := 1; j < runLen; j++ {
+			if i+j >= len(line) || line[i+j] != '`' {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
 }
 
 func (v *Vault) Resolve(target string) ResolveResult {
@@ -593,6 +630,8 @@ func encodeFrontmatter(metadata map[string]any) string {
 }
 
 func Slugify(input string) string {
+	input = strings.ReplaceAll(input, "/", "-")
+	input = strings.ReplaceAll(input, "\\", "-")
 	input = strings.ToLower(strings.TrimSpace(input))
 	if input == "" {
 		return ""

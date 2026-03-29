@@ -12,7 +12,7 @@ project: YANP
 
 # YANP TUI Roadmap v0.2.0
 
-The next milestone after `v0.1.0-alpha.1` is `v0.2.0`.
+The next milestone after `v0.1.0-alpha.2` is `v0.2.0`.
 
 ## Focus
 
