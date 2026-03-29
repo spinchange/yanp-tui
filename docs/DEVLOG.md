@@ -21,6 +21,7 @@ Prepared `yanp-tui` for a first alpha-style release as `v0.1.0-alpha.1`.
 - Added self-documenting notes inside the sample YANP vault.
 - Added conflict-resolution tests and fixed title-vs-filename precedence behavior.
 - Added `build.ps1` to produce a Windows binary and release zip.
+- Surfaced vault conflict health in the dashboard through a dedicated health report view.
 
 ### Notes
 
@@ -29,6 +30,6 @@ Prepared `yanp-tui` for a first alpha-style release as `v0.1.0-alpha.1`.
 
 ### Next likely work
 
-- Surface conflict warnings in the dashboard.
 - Add periodic note creation flows for `daily/`, `weekly/`, and `monthly/`.
-- Surface conflicts and other vault health warnings in the dashboard.
+- Add richer dashboard widgets and saved queries.
+- Expand health reporting beyond duplicate title, alias, and filename targets.

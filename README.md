@@ -11,6 +11,7 @@ This project is currently shaped as an early preview release: `v0.1.0-alpha.1`.
 - Rename updates inbound wikilinks across the vault.
 - Publish writes CommonMark output to a separate directory.
 - The TUI includes a dashboard, browser, preview, filtering, help, capture, create, rename, and publish flows.
+- The dashboard now exposes vault-health conflicts through a dedicated health report.
 - Tests and builds are passing with `-buildvcs=false`.
 
 ## Features
@@ -39,6 +40,7 @@ go run -buildvcs=false ./cmd/yanp -vault .\testdata\sample-vault
 - `enter`: open the selected dashboard item
 - `/`: filter notes
 - `g`: return to the dashboard
+- from the dashboard, open the vault health report when conflicts are detected
 - `n`: create a new note
 - `c`: capture to `inbox.md`
 - `R`: rename selected note
@@ -85,6 +87,16 @@ This repo is currently aimed at a small first release in the style of:
 
 ## Known Gaps
 
-- Conflict warnings are implemented in the vault engine but not yet surfaced in the dashboard.
 - Periodic note creation flows are still minimal.
 - The release artifact name is `yanp.exe`.
+
+## Next Milestone
+
+The current working target after `v0.1.0-alpha.1` is `v0.2.0`.
+
+Planned focus:
+
+- periodic note creation for `daily/`, `weekly/`, and `monthly/`
+- richer dashboard widgets and saved queries
+- stronger vault-health surfacing beyond duplicate-target conflicts
+- more polished create and rename workflows

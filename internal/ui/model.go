@@ -20,6 +20,7 @@ type mode int
 const (
 	modeBrowse mode = iota
 	modeDashboard
+	modeHealth
 	modeHelp
 	modeFilter
 	modeNew
@@ -126,6 +127,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "?", "h":
 				m.mode = modeDashboard
 				m.status = "Back to dashboard"
+				return m, nil
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+		if m.mode == modeHealth {
+			switch msg.String() {
+			case "esc", "g":
+				m.mode = modeDashboard
+				m.status = "Back to dashboard"
+				return m, nil
+			case "?", "h":
+				m.mode = modeHelp
+				m.status = "Help"
 				return m, nil
 			case "q", "ctrl+c":
 				return m, tea.Quit
@@ -299,6 +315,9 @@ func (m Model) View() string {
 	if m.mode == modeHelp {
 		return m.renderHelp()
 	}
+	if m.mode == modeHealth {
+		return m.renderHealth()
+	}
 	if m.mode == modeDashboard {
 		return m.renderDashboard()
 	}
@@ -390,6 +409,8 @@ func promptLabel(mode mode) string {
 	switch mode {
 	case modeDashboard:
 		return "Dashboard"
+	case modeHealth:
+		return "Vault health"
 	case modeHelp:
 		return "Help"
 	case modeFilter:
@@ -418,13 +439,13 @@ func (m Model) renderHelp() string {
 		"  k / up      Move selection up",
 		"  /           Filter notes by title, alias, tag, path, or text",
 		"  g           Return to the dashboard",
+		"  esc         Leave health/help or cancel a prompt",
 		"  n           Create a new note in the vault root",
 		"  c           Capture a quick entry into inbox.md",
 		"  R           Rename the selected note and rewrite inbound wikilinks",
 		"  p           Publish the vault to a separate CommonMark directory",
 		"  r           Refresh the vault index",
 		"  ? or h      Open this help screen",
-		"  esc         Close help or cancel a prompt",
 		"  q           Quit",
 		"",
 		"YANP Basics",
@@ -435,6 +456,7 @@ func (m Model) renderHelp() string {
 		"",
 		"Current Screen",
 		"  - Dashboard: quick summary and selectable shortcuts",
+		"  - Health: conflict report for duplicate targets",
 		"  - Left panel: note list",
 		"  - Right panel: preview of the selected note",
 		"  - Footer: status and prompts",
@@ -473,6 +495,7 @@ func (m Model) renderDashboard() string {
 func (m Model) renderOverview() string {
 	total := len(m.allNotes)
 	filtered := len(m.notes)
+	conflicts := m.vault.Conflicts()
 	inbox := "missing"
 	if m.vault.NoteByRelPath("inbox.md") != nil {
 		inbox = "present"
@@ -485,11 +508,28 @@ func (m Model) renderOverview() string {
 		fmt.Sprintf("Total notes: %d", total),
 		fmt.Sprintf("Visible notes: %d", filtered),
 		fmt.Sprintf("Inbox: %s", inbox),
+		fmt.Sprintf("Conflicts: %d", len(conflicts)),
 	}
 
 	filter := m.currentFilter()
 	if filter != "" {
 		sections = append(sections, fmt.Sprintf("Filter: %s", filter))
+	}
+
+	sections = append(sections,
+		"",
+		m.style.title.Render("Vault health"),
+		"",
+	)
+	if len(conflicts) == 0 {
+		sections = append(sections, "No duplicate title, alias, or filename targets detected.")
+	} else {
+		limit := min(3, len(conflicts))
+		for i := 0; i < limit; i++ {
+			conflict := conflicts[i]
+			sections = append(sections, fmt.Sprintf("- %s conflict: %s", conflict.Matched, conflict.Name))
+		}
+		sections = append(sections, "Open the health report from the dashboard for details.")
 	}
 
 	sections = append(sections,
@@ -535,6 +575,14 @@ func (m Model) dashboardItems() []dashboardItem {
 		detail: fmt.Sprintf("%d notes in the current list", len(m.notes)),
 		action: "browse",
 	})
+	conflicts := m.vault.Conflicts()
+	if len(conflicts) > 0 {
+		items = append(items, dashboardItem{
+			label:  "Open vault health report",
+			detail: fmt.Sprintf("%d duplicate resolution target(s) detected", len(conflicts)),
+			action: "health",
+		})
+	}
 	if note := m.vault.NoteByRelPath("inbox.md"); note != nil {
 		items = append(items, dashboardItem{
 			label:   "Open inbox",
@@ -591,9 +639,39 @@ func (m Model) activateDashboardItem() (tea.Model, tea.Cmd) {
 		}
 		m.status = "Shortcut target is not in the current note list"
 		return m, nil
+	case "health":
+		m.mode = modeHealth
+		m.status = fmt.Sprintf("Vault health: %d conflict(s)", len(m.vault.Conflicts()))
+		return m, nil
 	default:
 		return m, nil
 	}
+}
+
+func (m Model) renderHealth() string {
+	header := m.style.title.Render("YANP Vault Health") + "\n" +
+		m.style.subtle.Render("g or esc return to dashboard  ? help  q quit")
+	conflicts := m.vault.Conflicts()
+
+	lines := []string{}
+	if len(conflicts) == 0 {
+		lines = append(lines, "No duplicate title, alias, or filename targets detected.")
+	} else {
+		lines = append(lines, fmt.Sprintf("Detected %d conflict(s).", len(conflicts)), "")
+		for _, conflict := range conflicts {
+			lines = append(lines, fmt.Sprintf("%s conflict: %s", titleLabel(conflict.Matched), conflict.Name))
+			if conflict.Winner != nil {
+				lines = append(lines, fmt.Sprintf("  winner: %s", conflict.Winner.RelPath))
+			}
+			for _, candidate := range conflict.Candidates {
+				lines = append(lines, fmt.Sprintf("  candidate: %s", candidate.RelPath))
+			}
+			lines = append(lines, "")
+		}
+	}
+
+	content := m.style.panel.Width(max(50, m.width-6)).Render(header + "\n\n" + strings.Join(lines, "\n"))
+	return lipgloss.NewStyle().Padding(1, 2).Render(content)
 }
 
 func (m *Model) applyFilter(query string) {
@@ -752,4 +830,11 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func titleLabel(input string) string {
+	if input == "" {
+		return ""
+	}
+	return strings.ToUpper(input[:1]) + input[1:]
 }

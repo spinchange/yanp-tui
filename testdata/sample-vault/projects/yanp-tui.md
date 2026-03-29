@@ -31,7 +31,7 @@ project: YANP
 - Merge frontmatter tags with inline tags like #pkm and #tooling.
 - Rename notes using lowercase kebab-case filenames and rewrite inbound wikilinks.
 - Publish notes to a separate output directory with relative Markdown links.
-- Offer a Bubble Tea TUI for dashboard, filtering, browse, preview, capture, create, rename, and publish flows.
+- Offer a Bubble Tea TUI for dashboard, health reporting, filtering, browse, preview, capture, create, rename, and publish flows.
 
 ## Project Layout
 
@@ -43,6 +43,7 @@ project: YANP
 ## TUI Flows
 
 - The app opens on a dashboard with selectable shortcuts for browse, inbox, today's daily note, and recent notes.
+- When duplicate title, alias, or filename targets exist, the dashboard exposes a vault health report.
 - `enter` opens the note browser.
 - `/` filters notes by title, alias, tag, path, or body text.
 - `?` opens in-app help.
@@ -59,6 +60,5 @@ go run ./cmd/yanp rename -vault .\testdata\sample-vault -note projects/sprint-re
 ## Open Work
 
 - Add richer note creation flows for `daily/`, `weekly/`, and `monthly/`.
-- Add conflict inspection for duplicate titles or aliases.
 - Add saved queries and dashboard widgets from config.
-- Tighten verification around the TUI package, since the current `go test` pass is taking longer than expected in this environment.
+- Expand vault health beyond duplicate conflict reporting.
