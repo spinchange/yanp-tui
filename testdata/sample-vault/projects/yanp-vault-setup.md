@@ -30,3 +30,15 @@ project: YANP
 ## Config
 
 Use `config.example.json` as the starting point for `C:\Users\user\.yanp\config.json` so the app opens your real vault by default.
+
+## First Run
+
+- If no vault is configured yet, `yanp-tui` opens a setup flow.
+- You can enter the path to an existing vault and press Enter.
+- You can press `V` to create a brand-new vault folder with conventional YANP subfolders.
+
+## Changing Vaults
+
+- Press `v` in the app to switch to an existing vault.
+- Press `V` in the app to create and switch to a new vault.
+- The selected vault is saved into `C:\Users\user\.yanp\config.json`.

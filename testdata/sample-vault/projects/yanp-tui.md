@@ -42,10 +42,12 @@ project: YANP
 
 ## TUI Flows
 
+- On first run without a configured vault, the app opens a setup flow instead of guessing the current directory.
 - The app opens on a dashboard with selectable shortcuts for browse, inbox, today's daily note, and recent notes.
 - When duplicate title, alias, or filename targets exist, the dashboard exposes a vault health report.
 - `enter` opens the note browser.
 - `/` filters notes by title, alias, tag, path, or body text.
+- `v` switches to an existing vault and `V` creates a new vault.
 - `?` opens in-app help.
 
 ## Commands

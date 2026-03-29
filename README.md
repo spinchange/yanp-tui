@@ -41,12 +41,21 @@ You have two options:
 
 For normal use, point the app at your own private real vault. See [docs/VAULTS.md](C:\Users\user\yanp-tui\docs\VAULTS.md) and [config.example.json](C:\Users\user\yanp-tui\config.example.json).
 
+On first run, if no vault is configured yet, YANP-TUI now opens a setup flow instead of guessing a folder. You can:
+
+- enter the path to an existing vault
+- press `V` to create a new vault at a path you choose
+
+The selected vault is saved to `C:\Users\user\.yanp\config.json`.
+
 ## Key TUI Controls
 
 - `j` / `k`: move selection
 - `enter`: open the selected dashboard item
 - `/`: filter notes
 - `g`: return to the dashboard
+- `v`: switch to a different existing vault
+- `V`: create and switch to a new vault
 - from the dashboard, open the vault health report when conflicts are detected
 - `n`: create a new note
 - `c`: capture to `inbox.md`

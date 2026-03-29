@@ -37,7 +37,8 @@ func Run(args []string, cfg config.Config) error {
 
 func runTUI(args []string, cfg config.Config) error {
 	fs := flag.NewFlagSet("tui", flag.ContinueOnError)
-	vaultPath := fs.String("vault", resolvedVault(cfg), "path to YANP vault")
+	defaultVault := strings.TrimSpace(cfg.Vault)
+	vaultPath := fs.String("vault", defaultVault, "path to YANP vault")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

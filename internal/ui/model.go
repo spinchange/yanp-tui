@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -23,6 +24,9 @@ const (
 	modeHealth
 	modeHelp
 	modeFilter
+	modeFirstRun
+	modeSwitchVault
+	modeCreateVault
 	modeNew
 	modeCapture
 	modeRename
@@ -35,8 +39,10 @@ type reloadMsg struct {
 }
 
 type actionMsg struct {
-	status string
-	err    error
+	status    string
+	vaultPath string
+	cfg       *config.Config
+	err       error
 }
 
 type Model struct {
@@ -54,6 +60,7 @@ type Model struct {
 	input     textinput.Model
 	mode      mode
 	status    string
+	setupNote string
 	err       error
 	style     styles
 }
@@ -75,13 +82,8 @@ type styles struct {
 }
 
 func New(vaultPath string, cfg config.Config) (Model, error) {
-	v, err := vault.Load(vaultPath)
-	if err != nil {
-		return Model{}, err
-	}
-
 	input := textinput.New()
-	input.CharLimit = 200
+	input.CharLimit = 260
 
 	viewport := viewport.New(0, 0)
 	style := styles{
@@ -96,16 +98,35 @@ func New(vaultPath string, cfg config.Config) (Model, error) {
 	m := Model{
 		cfg:       cfg,
 		vaultPath: vaultPath,
-		vault:     v,
-		allNotes:  v.Notes,
-		notes:     v.Notes,
 		viewport:  viewport,
 		input:     input,
 		mode:      modeDashboard,
-		status:    fmt.Sprintf("Loaded %d notes from %s", len(v.Notes), vaultPath),
+		status:    "YANP TUI",
 		style:     style,
 	}
-	m.refreshPreview()
+	if strings.TrimSpace(vaultPath) == "" {
+		m.mode = modeFirstRun
+		m.setupNote = "Pick an existing vault folder or create a new one."
+		m.status = "No vault configured yet"
+		m.input.Placeholder = "Path to your vault folder"
+		m.input.Focus()
+		m.refreshPreview()
+		return m, nil
+	}
+	if err := m.loadVault(vaultPath); err != nil {
+		if os.IsNotExist(err) {
+			m.mode = modeFirstRun
+			m.setupNote = "That configured vault path does not exist yet. Choose a vault folder or create one."
+			m.status = "Configured vault not found"
+			m.input.Placeholder = "Path to your vault folder"
+			m.input.SetValue(vaultPath)
+			m.input.Focus()
+			m.err = nil
+			m.refreshPreview()
+			return m, nil
+		}
+		return Model{}, err
+	}
 	return m, nil
 }
 
@@ -122,6 +143,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Height = max(8, msg.Height-8)
 		m.refreshPreview()
 	case tea.KeyMsg:
+		if m.mode == modeFirstRun {
+			switch msg.String() {
+			case "ctrl+c", "q":
+				return m, tea.Quit
+			case "esc":
+				m.input.SetValue("")
+				m.status = "First-run setup"
+				return m, nil
+			case "V":
+				m.startPrompt(modeCreateVault, "Path for a new vault folder")
+				return m, nil
+			}
+			return m.updatePrompt(msg)
+		}
 		if m.mode == modeHelp {
 			switch msg.String() {
 			case "esc", "?", "h":
@@ -176,6 +211,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "r":
 				m.status = "Refreshing vault index..."
 				return m, loadVaultCmd(m.vaultPath)
+			case "v":
+				m.startPrompt(modeSwitchVault, "Path to an existing vault folder")
+				m.input.SetValue(m.vaultPath)
+				return m, nil
+			case "V":
+				m.startPrompt(modeCreateVault, "Path for a new vault folder")
+				if strings.TrimSpace(m.vaultPath) != "" {
+					m.input.SetValue(filepath.Dir(m.vaultPath))
+				}
+				return m, nil
 			case "n":
 				m.startPrompt(modeNew, "Title for new note")
 				return m, nil
@@ -221,6 +266,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.status = "Refreshing vault index..."
 			return m, loadVaultCmd(m.vaultPath)
+		case "v":
+			m.startPrompt(modeSwitchVault, "Path to an existing vault folder")
+			m.input.SetValue(m.vaultPath)
+		case "V":
+			m.startPrompt(modeCreateVault, "Path for a new vault folder")
+			if strings.TrimSpace(m.vaultPath) != "" {
+				m.input.SetValue(filepath.Dir(m.vaultPath))
+			}
 		case "n":
 			m.startPrompt(modeNew, "Title for new note")
 		case "c":
@@ -257,16 +310,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.refreshPreview()
 	case actionMsg:
-		m.mode = modeBrowse
 		m.input.Blur()
 		if msg.err != nil {
 			m.err = msg.err
 			m.status = msg.err.Error()
 			return m, nil
 		}
+		if msg.cfg != nil {
+			m.cfg = *msg.cfg
+		}
+		if strings.TrimSpace(msg.vaultPath) != "" {
+			if err := m.loadVault(msg.vaultPath); err != nil {
+				m.err = err
+				m.status = err.Error()
+				return m, nil
+			}
+			m.mode = modeDashboard
+		} else {
+			m.mode = modeBrowse
+		}
 		m.err = nil
 		m.status = msg.status
-		return m, loadVaultCmd(m.vaultPath)
+		return m, nil
 	}
 
 	var cmd tea.Cmd
@@ -284,6 +349,10 @@ func (m Model) updatePrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		value := strings.TrimSpace(m.input.Value())
 		switch m.mode {
+		case modeFirstRun, modeSwitchVault:
+			return m, switchVaultCmd(m.cfg, value)
+		case modeCreateVault:
+			return m, createVaultCmd(m.cfg, value)
 		case modeFilter:
 			m.mode = modeBrowse
 			m.input.Blur()
@@ -312,6 +381,9 @@ func (m Model) updatePrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
+	if m.mode == modeFirstRun {
+		return m.renderFirstRun()
+	}
 	if m.mode == modeHelp {
 		return m.renderHelp()
 	}
@@ -326,7 +398,7 @@ func (m Model) View() string {
 	rightWidth := max(20, m.width-leftWidth-5)
 
 	header := m.style.title.Render("YANP TUI") + "\n" +
-		m.style.subtle.Render("j/k move  / filter  g dashboard  n new  c capture  R rename  p publish  r refresh  ? help  q quit")
+		m.style.subtle.Render("j/k move  / filter  g dashboard  v switch vault  V new vault  n new  c capture  R rename  p publish  r refresh  ? help  q quit")
 
 	list := m.renderList(leftWidth)
 	preview := m.style.panel.Width(rightWidth).Height(max(10, m.height-8)).Render(m.viewport.View())
@@ -413,8 +485,14 @@ func promptLabel(mode mode) string {
 		return "Vault health"
 	case modeHelp:
 		return "Help"
+	case modeFirstRun:
+		return "First-run setup"
 	case modeFilter:
 		return "Filter note list"
+	case modeSwitchVault:
+		return "Switch to an existing vault"
+	case modeCreateVault:
+		return "Create a new vault"
 	case modeNew:
 		return "Create note in the vault root"
 	case modeCapture:
@@ -439,6 +517,8 @@ func (m Model) renderHelp() string {
 		"  k / up      Move selection up",
 		"  /           Filter notes by title, alias, tag, path, or text",
 		"  g           Return to the dashboard",
+		"  v           Switch to a different vault location",
+		"  V           Create and switch to a new vault",
 		"  esc         Leave health/help or cancel a prompt",
 		"  n           Create a new note in the vault root",
 		"  c           Capture a quick entry into inbox.md",
@@ -470,7 +550,7 @@ func (m Model) renderHelp() string {
 
 func (m Model) renderDashboard() string {
 	header := m.style.title.Render("YANP TUI") + "\n" +
-		m.style.subtle.Render("j/k choose  enter open  / filter  n new  c capture  r refresh  ? help  q quit")
+		m.style.subtle.Render("j/k choose  enter open  / filter  v switch vault  V new vault  n new  c capture  r refresh  ? help  q quit")
 
 	recent := m.renderDashboardItems()
 	overview := m.renderOverview()
@@ -544,6 +624,26 @@ func (m Model) renderOverview() string {
 	)
 
 	return m.style.panel.Width(max(36, m.width/2-4)).Height(max(12, m.height-8)).Render(strings.Join(sections, "\n"))
+}
+
+func (m Model) renderFirstRun() string {
+	header := m.style.title.Render("YANP First-Run Setup")
+	lines := []string{
+		"YANP-TUI needs a real vault location before it can open notes.",
+		"",
+		"Enter a folder path and press Enter to use an existing vault.",
+		"Press Shift+V from the app later if you want to create a new vault folder.",
+		"",
+		"Examples:",
+		"  G:\\Notes",
+		"  D:\\PKM\\vault",
+	}
+	if strings.TrimSpace(m.setupNote) != "" {
+		lines = append(lines, "", m.setupNote)
+	}
+	body := m.style.panel.Width(max(50, m.width-6)).Render(header + "\n\n" + strings.Join(lines, "\n"))
+	footer := m.style.subtle.Render(promptLabel(m.mode)) + "\n" + m.input.View()
+	return lipgloss.NewStyle().Padding(1, 2).Render(body + "\n\n" + footer)
 }
 
 func (m Model) renderDashboardItems() string {
@@ -725,10 +825,97 @@ func noteMatches(note *vault.Note, needle string) bool {
 	return false
 }
 
+func (m *Model) loadVault(root string) error {
+	v, err := vault.Load(root)
+	if err != nil {
+		return err
+	}
+	m.vaultPath = root
+	m.vault = v
+	m.allNotes = v.Notes
+	m.notes = v.Notes
+	m.selected = 0
+	m.dashIndex = 0
+	m.refreshPreview()
+	return nil
+}
+
 func loadVaultCmd(root string) tea.Cmd {
 	return func() tea.Msg {
 		v, err := vault.Load(root)
 		return reloadMsg{v: v, err: err}
+	}
+}
+
+func switchVaultCmd(cfg config.Config, root string) tea.Cmd {
+	return func() tea.Msg {
+		root = filepath.Clean(strings.TrimSpace(root))
+		if root == "" {
+			return actionMsg{err: fmt.Errorf("vault path is required")}
+		}
+		info, err := os.Stat(root)
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		if !info.IsDir() {
+			return actionMsg{err: fmt.Errorf("%s is not a directory", root)}
+		}
+		cfg.Vault = root
+		if cfg.Defaults.StaleDays == 0 {
+			cfg.Defaults.StaleDays = 30
+		}
+		if cfg.Defaults.DashboardLimit == 0 {
+			cfg.Defaults.DashboardLimit = 5
+		}
+		if err := config.Save(cfg); err != nil {
+			return actionMsg{err: err}
+		}
+		return actionMsg{
+			status:    "Using vault " + root,
+			vaultPath: root,
+			cfg:       &cfg,
+		}
+	}
+}
+
+func createVaultCmd(cfg config.Config, root string) tea.Cmd {
+	return func() tea.Msg {
+		root = filepath.Clean(strings.TrimSpace(root))
+		if root == "" {
+			return actionMsg{err: fmt.Errorf("new vault path is required")}
+		}
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			return actionMsg{err: err}
+		}
+		for _, rel := range []string{"daily", "weekly", "monthly", "assets", "templates"} {
+			if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
+				return actionMsg{err: err}
+			}
+		}
+		inboxPath := filepath.Join(root, "inbox.md")
+		if _, err := os.Stat(inboxPath); os.IsNotExist(err) {
+			if err := os.WriteFile(inboxPath, []byte("# Inbox\n\n"), 0o644); err != nil {
+				return actionMsg{err: err}
+			}
+		}
+		cfg.Vault = root
+		if cfg.Templates == "" {
+			cfg.Templates = filepath.Join(root, "templates")
+		}
+		if cfg.Defaults.StaleDays == 0 {
+			cfg.Defaults.StaleDays = 30
+		}
+		if cfg.Defaults.DashboardLimit == 0 {
+			cfg.Defaults.DashboardLimit = 5
+		}
+		if err := config.Save(cfg); err != nil {
+			return actionMsg{err: err}
+		}
+		return actionMsg{
+			status:    "Created and selected vault " + root,
+			vaultPath: root,
+			cfg:       &cfg,
+		}
 	}
 }
 

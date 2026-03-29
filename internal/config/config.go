@@ -55,6 +55,26 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
+func Save(cfg Config) error {
+	configPath, err := path()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	raw = append(raw, '\n')
+	return os.WriteFile(configPath, raw, 0o644)
+}
+
+func Path() (string, error) {
+	return path()
+}
+
 func path() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
