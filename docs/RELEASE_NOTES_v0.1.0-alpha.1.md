@@ -17,6 +17,9 @@ First public alpha-style preview of `yanp-tui`, a Go PKM tool with a Bubble Tea 
   - dashboard
   - note browser and preview
   - note filtering
+  - first-run vault setup
+  - switching to an existing vault
+  - creating and switching to a new vault
   - quick capture to `inbox.md`
   - note creation
   - rename and publish flows
@@ -26,7 +29,6 @@ First public alpha-style preview of `yanp-tui`, a Go PKM tool with a Bubble Tea 
 
 ### Known Gaps
 
-- Dashboard conflict surfacing is not wired yet
 - Periodic note creation flows are still minimal
 - Release distribution is currently focused on Windows `amd64`
 
