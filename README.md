@@ -2,6 +2,8 @@
 
 `yanp-tui` is a Go personal knowledge management tool with a terminal UI, built to work with the draft [YANP vault specification](https://spinchange.github.io/yanp/).
 
+YANP-TUI stands for `Yet Another Notes Project - Terminal User Interface`.
+
 This project is currently shaped as an early preview release: `v0.1.0-alpha.1`.
 
 ## Current Status
@@ -26,13 +28,16 @@ This project is currently shaped as an early preview release: `v0.1.0-alpha.1`.
 - Browse a vault in a Bubble Tea TUI
 - Jump from the dashboard into inbox, daily notes, and recent notes
 
-## Run The App
+## Download And Run
 
-From `C:\Users\user\yanp-tui`:
+You can download the Windows build from the GitHub release page:
 
-```powershell
-go run -buildvcs=false ./cmd/yanp -vault .\testdata\sample-vault
-```
+- [v0.1.0-alpha.1 release](https://github.com/spinchange/yanp-tui/releases/tag/v0.1.0-alpha.1)
+
+You have two options:
+
+1. Download `yanp.exe` directly and run it
+2. Download `yanp-v0.1.0-alpha.1-windows-amd64.zip`, extract it, and run `yanp.exe`
 
 For normal use, point the app at your own private real vault. See [docs/VAULTS.md](C:\Users\user\yanp-tui\docs\VAULTS.md) and [config.example.json](C:\Users\user\yanp-tui\config.example.json).
 
@@ -58,6 +63,14 @@ go run -buildvcs=false ./cmd/yanp capture -vault .\testdata\sample-vault -text "
 go run -buildvcs=false ./cmd/yanp rename -vault .\testdata\sample-vault -note projects/sprint-review.md -title "Sprint Demo"
 ```
 
+## Run From Source
+
+From `C:\Users\user\yanp-tui`:
+
+```powershell
+go run -buildvcs=false ./cmd/yanp -vault .\testdata\sample-vault
+```
+
 ## Build A Windows Release Artifact
 
 ```powershell
@@ -68,18 +81,6 @@ This produces:
 
 - `dist\yanp.exe`
 - `dist\yanp-v0.1.0-alpha.1-windows-amd64.zip`
-
-## Download And Run
-
-You can currently download the Windows build from the GitHub release page:
-
-- [v0.1.0-alpha.1 release](https://github.com/spinchange/yanp-tui/releases/tag/v0.1.0-alpha.1)
-
-Current download flow:
-
-1. Download `yanp-v0.1.0-alpha.1-windows-amd64.zip`
-2. Extract the archive
-3. Run `yanp.exe`
 
 ## Project Layout
 
