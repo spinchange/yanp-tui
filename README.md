@@ -69,6 +69,18 @@ This produces:
 - `dist\yanp.exe`
 - `dist\yanp-v0.1.0-alpha.1-windows-amd64.zip`
 
+## Download And Run
+
+You can currently download the Windows build from the GitHub release page:
+
+- [v0.1.0-alpha.1 release](https://github.com/spinchange/yanp-tui/releases/tag/v0.1.0-alpha.1)
+
+Current download flow:
+
+1. Download `yanp-v0.1.0-alpha.1-windows-amd64.zip`
+2. Extract the archive
+3. Run `yanp.exe`
+
 ## Project Layout
 
 - `cmd/yanp`: entry point
