@@ -44,7 +44,9 @@ project: YANP
 
 - On first run without a configured vault, the app opens a setup flow instead of guessing the current directory.
 - The app opens on a dashboard with selectable shortcuts for browse, inbox, today's daily note, and recent notes.
+- The dashboard summarizes inbox state plus current daily, weekly, and monthly note status.
 - When duplicate title, alias, or filename targets exist, the dashboard exposes a vault health report.
+- The health report also surfaces unresolved wikilinks so broken references are visible without publishing.
 - `enter` opens the note browser.
 - `d`, `w`, and `m` open or create the current daily, weekly, and monthly notes.
 - `/` filters notes by title, alias, tag, path, or body text.
@@ -63,5 +65,5 @@ go run ./cmd/yanp rename -vault .\testdata\sample-vault -note projects/sprint-re
 ## Open Work
 
 - Add saved queries and dashboard widgets from config.
-- Expand vault health beyond duplicate conflict reporting.
+- Expand vault health beyond duplicate conflicts and unresolved-link reporting.
 - Improve periodic-note summaries and dashboard widgets.

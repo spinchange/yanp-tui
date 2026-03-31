@@ -559,7 +559,7 @@ func (m Model) renderHelp() string {
 		"",
 		"Current Screen",
 		"  - Dashboard: quick summary and selectable shortcuts",
-		"  - Health: conflict report for duplicate targets",
+		"  - Health: duplicate-target and unresolved-link report",
 		"  - Left panel: note list",
 		"  - Right panel: preview of the selected note",
 		"  - Footer: status and prompts",
@@ -599,10 +599,16 @@ func (m Model) renderOverview() string {
 	total := len(m.allNotes)
 	filtered := len(m.notes)
 	conflicts := m.vault.Conflicts()
+	unresolved := m.vault.UnresolvedLinks()
 	inbox := "missing"
+	inboxEntries := 0
 	if m.vault.NoteByRelPath("inbox.md") != nil {
 		inbox = "present"
+		inboxEntries = inboxEntryCount(m.vault.NoteByRelPath("inbox.md"))
 	}
+	dailySummary := periodicSummary(m.vault, vault.PeriodicDaily, time.Now())
+	weeklySummary := periodicSummary(m.vault, vault.PeriodicWeekly, time.Now())
+	monthlySummary := periodicSummary(m.vault, vault.PeriodicMonthly, time.Now())
 
 	sections := []string{
 		m.style.title.Render("Overview"),
@@ -611,7 +617,9 @@ func (m Model) renderOverview() string {
 		fmt.Sprintf("Total notes: %d", total),
 		fmt.Sprintf("Visible notes: %d", filtered),
 		fmt.Sprintf("Inbox: %s", inbox),
+		fmt.Sprintf("Inbox entries: %d", inboxEntries),
 		fmt.Sprintf("Conflicts: %d", len(conflicts)),
+		fmt.Sprintf("Unresolved links: %d", unresolvedLinkCount(unresolved)),
 	}
 
 	filter := m.currentFilter()
@@ -621,16 +629,35 @@ func (m Model) renderOverview() string {
 
 	sections = append(sections,
 		"",
+		m.style.title.Render("Current Period"),
+		"",
+		fmt.Sprintf("Today: %s", dailySummary),
+		fmt.Sprintf("This week: %s", weeklySummary),
+		fmt.Sprintf("This month: %s", monthlySummary),
+		"",
 		m.style.title.Render("Vault health"),
 		"",
 	)
-	if len(conflicts) == 0 {
-		sections = append(sections, "No duplicate title, alias, or filename targets detected.")
+	if len(conflicts) == 0 && len(unresolved) == 0 {
+		sections = append(sections, "No duplicate targets or unresolved wikilinks detected.")
 	} else {
-		limit := min(3, len(conflicts))
-		for i := 0; i < limit; i++ {
-			conflict := conflicts[i]
-			sections = append(sections, fmt.Sprintf("- %s conflict: %s", conflict.Matched, conflict.Name))
+		if len(conflicts) == 0 {
+			sections = append(sections, "No duplicate title, alias, or filename targets detected.")
+		} else {
+			limit := min(3, len(conflicts))
+			for i := 0; i < limit; i++ {
+				conflict := conflicts[i]
+				sections = append(sections, fmt.Sprintf("- %s conflict: %s", conflict.Matched, conflict.Name))
+			}
+		}
+		if len(unresolved) == 0 {
+			sections = append(sections, "No unresolved wikilinks detected.")
+		} else {
+			limit := min(3, len(unresolved))
+			for i := 0; i < limit; i++ {
+				link := unresolved[i]
+				sections = append(sections, fmt.Sprintf("- unresolved link: %s (%s)", link.Target, link.Source.RelPath))
+			}
 		}
 		sections = append(sections, "Open the health report from the dashboard for details.")
 	}
@@ -641,6 +668,7 @@ func (m Model) renderOverview() string {
 		"",
 		"Use j/k to choose a dashboard item.",
 		"Press d, w, or m to jump into the current period note.",
+		"Use inbox and current-period notes as your main landing points.",
 		"Press enter to open the selected target.",
 		"Press / to search and narrow the list.",
 		"Press n to create a new note.",
@@ -700,10 +728,11 @@ func (m Model) dashboardItems() []dashboardItem {
 		action: "browse",
 	})
 	conflicts := m.vault.Conflicts()
-	if len(conflicts) > 0 {
+	unresolved := m.vault.UnresolvedLinks()
+	if len(conflicts) > 0 || len(unresolved) > 0 {
 		items = append(items, dashboardItem{
 			label:  "Open vault health report",
-			detail: fmt.Sprintf("%d duplicate resolution target(s) detected", len(conflicts)),
+			detail: fmt.Sprintf("%d conflict(s), %d unresolved link(s)", len(conflicts), unresolvedLinkCount(unresolved)),
 			action: "health",
 		})
 	}
@@ -780,7 +809,7 @@ func (m Model) activateDashboardItem() (tea.Model, tea.Cmd) {
 		return m, nil
 	case "health":
 		m.mode = modeHealth
-		m.status = fmt.Sprintf("Vault health: %d conflict(s)", len(m.vault.Conflicts()))
+		m.status = fmt.Sprintf("Vault health: %d conflict(s), %d unresolved link(s)", len(m.vault.Conflicts()), unresolvedLinkCount(m.vault.UnresolvedLinks()))
 		return m, nil
 	case "daily":
 		return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicDaily)
@@ -797,21 +826,41 @@ func (m Model) renderHealth() string {
 	header := m.style.title.Render("YANP Vault Health") + "\n" +
 		m.style.subtle.Render("g or esc return to dashboard  ? help  q quit")
 	conflicts := m.vault.Conflicts()
+	unresolved := m.vault.UnresolvedLinks()
 
 	lines := []string{}
-	if len(conflicts) == 0 {
-		lines = append(lines, "No duplicate title, alias, or filename targets detected.")
+	if len(conflicts) == 0 && len(unresolved) == 0 {
+		lines = append(lines, "No duplicate targets or unresolved wikilinks detected.")
 	} else {
-		lines = append(lines, fmt.Sprintf("Detected %d conflict(s).", len(conflicts)), "")
-		for _, conflict := range conflicts {
-			lines = append(lines, fmt.Sprintf("%s conflict: %s", titleLabel(conflict.Matched), conflict.Name))
-			if conflict.Winner != nil {
-				lines = append(lines, fmt.Sprintf("  winner: %s", conflict.Winner.RelPath))
+		lines = append(lines, "Conflicts", "")
+		if len(conflicts) == 0 {
+			lines = append(lines, "No duplicate title, alias, or filename targets detected.", "")
+		} else {
+			lines = append(lines, fmt.Sprintf("Detected %d conflict(s).", len(conflicts)), "")
+			for _, conflict := range conflicts {
+				lines = append(lines, fmt.Sprintf("%s conflict: %s", titleLabel(conflict.Matched), conflict.Name))
+				if conflict.Winner != nil {
+					lines = append(lines, fmt.Sprintf("  winner: %s", conflict.Winner.RelPath))
+				}
+				for _, candidate := range conflict.Candidates {
+					lines = append(lines, fmt.Sprintf("  candidate: %s", candidate.RelPath))
+				}
+				lines = append(lines, "")
 			}
-			for _, candidate := range conflict.Candidates {
-				lines = append(lines, fmt.Sprintf("  candidate: %s", candidate.RelPath))
+		}
+
+		lines = append(lines, "Unresolved wikilinks", "")
+		if len(unresolved) == 0 {
+			lines = append(lines, "No unresolved wikilinks detected.")
+		} else {
+			lines = append(lines, fmt.Sprintf("Detected %d unresolved wikilink(s).", unresolvedLinkCount(unresolved)), "")
+			for _, link := range unresolved {
+				lines = append(lines, fmt.Sprintf("%s -> %s", link.Source.RelPath, link.Target))
+				if link.Count > 1 {
+					lines = append(lines, fmt.Sprintf("  occurrences: %d", link.Count))
+				}
+				lines = append(lines, "")
 			}
-			lines = append(lines, "")
 		}
 	}
 
@@ -1091,4 +1140,54 @@ func titleLabel(input string) string {
 		return ""
 	}
 	return strings.ToUpper(input[:1]) + input[1:]
+}
+
+func unresolvedLinkCount(links []vault.UnresolvedLink) int {
+	total := 0
+	for _, link := range links {
+		total += link.Count
+	}
+	return total
+}
+
+func inboxEntryCount(note *vault.Note) int {
+	if note == nil {
+		return 0
+	}
+	count := 0
+	for _, line := range strings.Split(note.Body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
+			count++
+		}
+	}
+	return count
+}
+
+func periodicSummary(v *vault.Vault, kind vault.PeriodicKind, when time.Time) string {
+	relPath, _, _, _, err := vaultPeriodicSpec(kind, when)
+	if err != nil {
+		return "unavailable"
+	}
+	note := v.NoteByRelPath(relPath)
+	if note == nil {
+		return "not created yet"
+	}
+	return note.RelPath
+}
+
+func vaultPeriodicSpec(kind vault.PeriodicKind, when time.Time) (string, string, map[string]any, string, error) {
+	switch kind {
+	case vault.PeriodicDaily:
+		stamp := when.In(time.Local).Format("2006-01-02")
+		return filepath.ToSlash(filepath.Join("daily", stamp+".md")), "", nil, "", nil
+	case vault.PeriodicWeekly:
+		year, week := when.In(time.Local).ISOWeek()
+		return filepath.ToSlash(filepath.Join("weekly", fmt.Sprintf("%04d-W%02d.md", year, week))), "", nil, "", nil
+	case vault.PeriodicMonthly:
+		stamp := when.In(time.Local).Format("2006-01")
+		return filepath.ToSlash(filepath.Join("monthly", stamp+".md")), "", nil, "", nil
+	default:
+		return "", "", nil, "", fmt.Errorf("unsupported periodic note kind: %s", kind)
+	}
 }

@@ -236,6 +236,40 @@ func TestConflictsReportsAllDuplicateTargets(t *testing.T) {
 	}
 }
 
+func TestUnresolvedLinksReportsUniqueNoteTargets(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "alpha.md", strings.Join([]string{
+		"# Alpha",
+		"",
+		"See [[Missing Note]] and [[Missing Note|alias]].",
+		"`[[Inline Code Missing]]`",
+		"```",
+		"[[Fenced Missing]]",
+		"```",
+		"Resolved link to [[Beta]].",
+		"",
+	}, "\n"))
+	writeFixture(t, root, "beta.md", "---\ntitle: Beta\n---\n")
+	writeFixture(t, root, "gamma.md", "Also see [[Another Missing]].\n")
+
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	unresolved := v.UnresolvedLinks()
+	if len(unresolved) != 2 {
+		t.Fatalf("expected 2 unresolved note-target pairs, got %d (%+v)", len(unresolved), unresolved)
+	}
+
+	if unresolved[0].Source.RelPath != "alpha.md" || unresolved[0].Target != "Missing Note" || unresolved[0].Count != 2 {
+		t.Fatalf("unexpected first unresolved link: %+v", unresolved[0])
+	}
+	if unresolved[1].Source.RelPath != "gamma.md" || unresolved[1].Target != "Another Missing" || unresolved[1].Count != 1 {
+		t.Fatalf("unexpected second unresolved link: %+v", unresolved[1])
+	}
+}
+
 func TestEnsurePeriodicDailyNoteCreatesAndReuses(t *testing.T) {
 	root := t.TempDir()
 	v, err := Load(root)

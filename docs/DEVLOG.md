@@ -38,6 +38,8 @@ Prepared `v0.1.0-alpha.2` as a parser and packaging follow-up release.
 - Added a first-run setup flow so the app prompts for a vault instead of guessing the current folder.
 - Added in-app vault management for switching to an existing vault or creating a new one.
 - Added daily, weekly, and monthly note creation/open flows with dashboard and keyboard entry points.
+- Added dashboard summaries for inbox state and current daily, weekly, and monthly notes.
+- Expanded vault health to report unresolved wikilinks alongside duplicate targets.
 
 ### Notes
 
@@ -48,5 +50,5 @@ Prepared `v0.1.0-alpha.2` as a parser and packaging follow-up release.
 ### Next likely work
 
 - Add richer dashboard widgets and saved queries.
-- Expand health reporting beyond duplicate title, alias, and filename targets.
+- Expand health reporting beyond duplicate targets and unresolved wikilinks.
 - Polish the periodic-note experience with stronger summaries and current-period widgets.

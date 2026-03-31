@@ -13,8 +13,9 @@ This project is currently shaped as an early preview release: `v0.1.0-alpha.2`.
 - Rename updates inbound wikilinks across the vault.
 - Publish writes CommonMark output to a separate directory.
 - The TUI includes a dashboard, browser, preview, filtering, help, capture, create, rename, and publish flows.
-- The dashboard now exposes vault-health conflicts through a dedicated health report.
+- The dashboard now exposes vault-health conflicts and unresolved wikilinks through a dedicated health report.
 - Daily, weekly, and monthly notes can be created or opened directly from the TUI.
+- The dashboard summarizes inbox state and the current daily, weekly, and monthly notes.
 - Tests and builds are passing with `-buildvcs=false`.
 
 ## Features
@@ -29,6 +30,8 @@ This project is currently shaped as an early preview release: `v0.1.0-alpha.2`.
 - Browse a vault in a Bubble Tea TUI
 - Jump from the dashboard into inbox, daily notes, and recent notes
 - Open or create the current daily, weekly, and monthly notes from the dashboard or keyboard
+- See inbox and current-period summaries directly on the dashboard
+- Detect unresolved wikilinks in the dashboard health view
 
 ## Download And Run
 
@@ -61,7 +64,7 @@ The selected vault is saved to `C:\Users\user\.yanp\config.json`.
 - `d`: open or create today's daily note
 - `w`: open or create this week's note
 - `m`: open or create this month's note
-- from the dashboard, open the vault health report when conflicts are detected
+- from the dashboard, open the vault health report when conflicts or unresolved wikilinks are detected
 - `n`: create a new note
 - `c`: capture to `inbox.md`
 - `R`: rename selected note
@@ -119,6 +122,7 @@ This repo is currently aimed at a small first release in the style of:
 ## Known Gaps
 
 - Periodic note creation flows are still minimal.
+- Vault health does not yet cover malformed frontmatter or stale-note summaries.
 - The release artifact name is `yanp.exe`.
 
 ## Next Milestone
@@ -129,5 +133,5 @@ Planned focus:
 
 - periodic note creation for `daily/`, `weekly/`, and `monthly/`
 - richer dashboard widgets and saved queries
-- stronger vault-health surfacing beyond duplicate-target conflicts
+- stronger vault-health surfacing for duplicate targets and unresolved wikilinks
 - more polished create and rename workflows

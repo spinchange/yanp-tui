@@ -52,6 +52,12 @@ type Conflict struct {
 	Candidates []*Note
 }
 
+type UnresolvedLink struct {
+	Source *Note
+	Target string
+	Count  int
+}
+
 type PublishOptions struct {
 	OutputDir           string
 	SkipDrafts          bool
@@ -359,6 +365,54 @@ func (v *Vault) Conflicts() []Conflict {
 	return conflicts
 }
 
+func (v *Vault) UnresolvedLinks() []UnresolvedLink {
+	type unresolvedKey struct {
+		source string
+		target string
+	}
+
+	notesByPath := map[string]*Note{}
+	counts := map[unresolvedKey]int{}
+	display := map[unresolvedKey]string{}
+
+	for _, note := range v.Notes {
+		notesByPath[note.RelPath] = note
+		eachWikilinkOutsideCode(note.Body, func(target, _ string) {
+			target = strings.TrimSpace(target)
+			if target == "" {
+				return
+			}
+			if v.Resolve(target).Resolved {
+				return
+			}
+			key := unresolvedKey{
+				source: note.RelPath,
+				target: strings.ToLower(target),
+			}
+			counts[key]++
+			if _, ok := display[key]; !ok {
+				display[key] = target
+			}
+		})
+	}
+
+	var unresolved []UnresolvedLink
+	for key, count := range counts {
+		unresolved = append(unresolved, UnresolvedLink{
+			Source: notesByPath[key.source],
+			Target: display[key],
+			Count:  count,
+		})
+	}
+	sort.Slice(unresolved, func(i, j int) bool {
+		if unresolved[i].Source.RelPath == unresolved[j].Source.RelPath {
+			return strings.ToLower(unresolved[i].Target) < strings.ToLower(unresolved[j].Target)
+		}
+		return unresolved[i].Source.RelPath < unresolved[j].Source.RelPath
+	})
+	return unresolved
+}
+
 func collectConflicts(kind string, notes []*Note, names func(*Note) []string) []Conflict {
 	buckets := map[string][]*Note{}
 	display := map[string]string{}
@@ -452,6 +506,22 @@ func (v *Vault) renderPublishedNote(note *Note, dst string, opts PublishOptions)
 	return encodeFrontmatter(note.Metadata) + body, warnings
 }
 
+func eachWikilinkOutsideCode(body string, visit func(target, display string)) {
+	lines := strings.Split(body, "\n")
+	inFence := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		eachInlineWikilink(line, visit)
+	}
+}
+
 func replaceWikilinksOutsideCode(body string, replacer func(string) string) string {
 	lines := strings.Split(body, "\n")
 	inFence := false
@@ -467,6 +537,39 @@ func replaceWikilinksOutsideCode(body string, replacer func(string) string) stri
 		lines[i] = replaceInlineWikilinks(line, replacer)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func eachInlineWikilink(line string, visit func(target, display string)) {
+	inCode := false
+	start := 0
+	for i, r := range line {
+		if r != '`' {
+			continue
+		}
+		if !inCode {
+			scanInlineWikilinks(line[start:i], visit)
+		}
+		inCode = !inCode
+		start = i + 1
+	}
+	if !inCode {
+		scanInlineWikilinks(line[start:], visit)
+	}
+}
+
+func scanInlineWikilinks(segment string, visit func(target, display string)) {
+	matches := wikilinkPattern.FindAllStringSubmatch(segment, -1)
+	for _, match := range matches {
+		target := ""
+		display := ""
+		if len(match) > 1 {
+			target = match[1]
+		}
+		if len(match) > 2 {
+			display = match[2]
+		}
+		visit(target, display)
+	}
 }
 
 func replaceInlineWikilinks(line string, replacer func(string) string) string {
