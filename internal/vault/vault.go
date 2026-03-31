@@ -59,6 +59,14 @@ type PublishOptions struct {
 	PreserveFrontmatter bool
 }
 
+type PeriodicKind string
+
+const (
+	PeriodicDaily   PeriodicKind = "daily"
+	PeriodicWeekly  PeriodicKind = "weekly"
+	PeriodicMonthly PeriodicKind = "monthly"
+)
+
 func Load(root string) (*Vault, error) {
 	root = filepath.Clean(root)
 	info, err := os.Stat(root)
@@ -516,6 +524,33 @@ func (v *Vault) CreateNote(relDir, title string, metadata map[string]any, body s
 	return parseNote(v.Root, fullPath)
 }
 
+func (v *Vault) EnsurePeriodicNote(kind PeriodicKind, when time.Time) (*Note, bool, error) {
+	relPath, title, metadata, body, err := periodicSpec(kind, when)
+	if err != nil {
+		return nil, false, err
+	}
+	if note := v.NoteByRelPath(relPath); note != nil {
+		return note, false, nil
+	}
+
+	fullPath := filepath.Join(v.Root, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		return nil, false, err
+	}
+	rendered := encodeFrontmatter(metadata) + body
+	if err := os.WriteFile(fullPath, []byte(rendered), 0o644); err != nil {
+		return nil, false, err
+	}
+	note, err := parseNote(v.Root, fullPath)
+	if err != nil {
+		return nil, false, err
+	}
+	v.Notes = append(v.Notes, note)
+	sortNotesByRecency(v.Notes)
+	_ = title
+	return note, true, nil
+}
+
 func (v *Vault) Capture(text string) error {
 	inboxPath := filepath.Join(v.Root, "inbox.md")
 	existing, err := os.ReadFile(inboxPath)
@@ -737,5 +772,44 @@ func isTagRune(r rune) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func periodicSpec(kind PeriodicKind, when time.Time) (string, string, map[string]any, string, error) {
+	when = when.In(time.Local)
+	switch kind {
+	case PeriodicDaily:
+		stamp := when.Format("2006-01-02")
+		title := "Daily Note"
+		return filepath.ToSlash(filepath.Join("daily", stamp+".md")), title, map[string]any{
+			"title":  title,
+			"date":   stamp,
+			"status": "active",
+			"source": "human",
+			"tags":   []string{"daily"},
+		}, "# " + title + "\n\nDate: " + stamp + "\n\n", nil
+	case PeriodicWeekly:
+		year, week := when.ISOWeek()
+		stamp := fmt.Sprintf("%04d-W%02d", year, week)
+		title := "Weekly Note"
+		return filepath.ToSlash(filepath.Join("weekly", stamp+".md")), title, map[string]any{
+			"title":  title,
+			"date":   when.Format("2006-01-02"),
+			"status": "active",
+			"source": "human",
+			"tags":   []string{"weekly"},
+		}, "# " + title + "\n\nWeek: " + stamp + "\n\n", nil
+	case PeriodicMonthly:
+		stamp := when.Format("2006-01")
+		title := "Monthly Note"
+		return filepath.ToSlash(filepath.Join("monthly", stamp+".md")), title, map[string]any{
+			"title":  title,
+			"date":   when.Format("2006-01-02"),
+			"status": "active",
+			"source": "human",
+			"tags":   []string{"monthly"},
+		}, "# " + title + "\n\nMonth: " + stamp + "\n\n", nil
+	default:
+		return "", "", nil, "", fmt.Errorf("unsupported periodic note kind: %s", kind)
 	}
 }

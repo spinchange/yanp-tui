@@ -31,7 +31,7 @@ project: YANP
 - Merge frontmatter tags with inline tags like #pkm and #tooling.
 - Rename notes using lowercase kebab-case filenames and rewrite inbound wikilinks.
 - Publish notes to a separate output directory with relative Markdown links.
-- Offer a Bubble Tea TUI for dashboard, health reporting, filtering, browse, preview, capture, create, rename, and publish flows.
+- Offer a Bubble Tea TUI for dashboard, health reporting, filtering, browse, preview, capture, create, rename, publish, and periodic-note flows.
 
 ## Project Layout
 
@@ -46,6 +46,7 @@ project: YANP
 - The app opens on a dashboard with selectable shortcuts for browse, inbox, today's daily note, and recent notes.
 - When duplicate title, alias, or filename targets exist, the dashboard exposes a vault health report.
 - `enter` opens the note browser.
+- `d`, `w`, and `m` open or create the current daily, weekly, and monthly notes.
 - `/` filters notes by title, alias, tag, path, or body text.
 - `v` switches to an existing vault and `V` creates a new vault.
 - `?` opens in-app help.
@@ -61,6 +62,6 @@ go run ./cmd/yanp rename -vault .\testdata\sample-vault -note projects/sprint-re
 
 ## Open Work
 
-- Add richer note creation flows for `daily/`, `weekly/`, and `monthly/`.
 - Add saved queries and dashboard widgets from config.
 - Expand vault health beyond duplicate conflict reporting.
+- Improve periodic-note summaries and dashboard widgets.

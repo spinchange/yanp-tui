@@ -41,6 +41,7 @@ type reloadMsg struct {
 type actionMsg struct {
 	status    string
 	vaultPath string
+	notePath  string
 	cfg       *config.Config
 	err       error
 }
@@ -211,6 +212,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "r":
 				m.status = "Refreshing vault index..."
 				return m, loadVaultCmd(m.vaultPath)
+			case "d":
+				return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicDaily)
+			case "w":
+				return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicWeekly)
+			case "m":
+				return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicMonthly)
 			case "v":
 				m.startPrompt(modeSwitchVault, "Path to an existing vault folder")
 				m.input.SetValue(m.vaultPath)
@@ -266,6 +273,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.status = "Refreshing vault index..."
 			return m, loadVaultCmd(m.vaultPath)
+		case "d":
+			return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicDaily)
+		case "w":
+			return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicWeekly)
+		case "m":
+			return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicMonthly)
 		case "v":
 			m.startPrompt(modeSwitchVault, "Path to an existing vault folder")
 			m.input.SetValue(m.vaultPath)
@@ -326,6 +339,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.mode = modeDashboard
+			if strings.TrimSpace(msg.notePath) != "" {
+				if idx := m.indexOfNote(msg.notePath); idx >= 0 {
+					m.selected = idx
+					m.mode = modeBrowse
+					m.refreshPreview()
+				}
+			}
 		} else {
 			m.mode = modeBrowse
 		}
@@ -516,6 +536,9 @@ func (m Model) renderHelp() string {
 		"  j / down    Move selection down",
 		"  k / up      Move selection up",
 		"  /           Filter notes by title, alias, tag, path, or text",
+		"  d           Open or create today's daily note",
+		"  w           Open or create this week's note",
+		"  m           Open or create this month's note",
 		"  g           Return to the dashboard",
 		"  v           Switch to a different vault location",
 		"  V           Create and switch to a new vault",
@@ -550,7 +573,7 @@ func (m Model) renderHelp() string {
 
 func (m Model) renderDashboard() string {
 	header := m.style.title.Render("YANP TUI") + "\n" +
-		m.style.subtle.Render("j/k choose  enter open  / filter  v switch vault  V new vault  n new  c capture  r refresh  ? help  q quit")
+		m.style.subtle.Render("j/k choose  enter open  d daily  w weekly  m monthly  / filter  v switch vault  V new vault  n new  c capture  r refresh  ? help  q quit")
 
 	recent := m.renderDashboardItems()
 	overview := m.renderOverview()
@@ -617,6 +640,7 @@ func (m Model) renderOverview() string {
 		m.style.title.Render("Next actions"),
 		"",
 		"Use j/k to choose a dashboard item.",
+		"Press d, w, or m to jump into the current period note.",
 		"Press enter to open the selected target.",
 		"Press / to search and narrow the list.",
 		"Press n to create a new note.",
@@ -691,6 +715,21 @@ func (m Model) dashboardItems() []dashboardItem {
 			action:  "note",
 		})
 	}
+	items = append(items, dashboardItem{
+		label:  "Open today's daily note",
+		detail: "Create it if it does not exist yet",
+		action: "daily",
+	})
+	items = append(items, dashboardItem{
+		label:  "Open this week's note",
+		detail: "Create it if it does not exist yet",
+		action: "weekly",
+	})
+	items = append(items, dashboardItem{
+		label:  "Open this month's note",
+		detail: "Create it if it does not exist yet",
+		action: "monthly",
+	})
 	todayRel := filepath.ToSlash(filepath.Join("daily", time.Now().Format("2006-01-02")+".md"))
 	if note := m.vault.NoteByRelPath(todayRel); note != nil {
 		items = append(items, dashboardItem{
@@ -743,6 +782,12 @@ func (m Model) activateDashboardItem() (tea.Model, tea.Cmd) {
 		m.mode = modeHealth
 		m.status = fmt.Sprintf("Vault health: %d conflict(s)", len(m.vault.Conflicts()))
 		return m, nil
+	case "daily":
+		return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicDaily)
+	case "weekly":
+		return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicWeekly)
+	case "monthly":
+		return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicMonthly)
 	default:
 		return m, nil
 	}
@@ -915,6 +960,28 @@ func createVaultCmd(cfg config.Config, root string) tea.Cmd {
 			status:    "Created and selected vault " + root,
 			vaultPath: root,
 			cfg:       &cfg,
+		}
+	}
+}
+
+func ensurePeriodicCmd(root string, kind vault.PeriodicKind) tea.Cmd {
+	return func() tea.Msg {
+		v, err := vault.Load(root)
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		note, created, err := v.EnsurePeriodicNote(kind, time.Now())
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		verb := "Opened"
+		if created {
+			verb = "Created"
+		}
+		return actionMsg{
+			status:    fmt.Sprintf("%s %s", verb, note.RelPath),
+			vaultPath: root,
+			notePath:  note.RelPath,
 		}
 	}
 }

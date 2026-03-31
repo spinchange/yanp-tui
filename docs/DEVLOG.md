@@ -37,6 +37,7 @@ Prepared `v0.1.0-alpha.2` as a parser and packaging follow-up release.
 - Documented the distinction between the tracked `sample-vault` and a user-chosen real private vault.
 - Added a first-run setup flow so the app prompts for a vault instead of guessing the current folder.
 - Added in-app vault management for switching to an existing vault or creating a new one.
+- Added daily, weekly, and monthly note creation/open flows with dashboard and keyboard entry points.
 
 ### Notes
 
@@ -46,6 +47,6 @@ Prepared `v0.1.0-alpha.2` as a parser and packaging follow-up release.
 
 ### Next likely work
 
-- Add periodic note creation flows for `daily/`, `weekly/`, and `monthly/`.
 - Add richer dashboard widgets and saved queries.
 - Expand health reporting beyond duplicate title, alias, and filename targets.
+- Polish the periodic-note experience with stronger summaries and current-period widgets.

@@ -14,6 +14,7 @@ This project is currently shaped as an early preview release: `v0.1.0-alpha.2`.
 - Publish writes CommonMark output to a separate directory.
 - The TUI includes a dashboard, browser, preview, filtering, help, capture, create, rename, and publish flows.
 - The dashboard now exposes vault-health conflicts through a dedicated health report.
+- Daily, weekly, and monthly notes can be created or opened directly from the TUI.
 - Tests and builds are passing with `-buildvcs=false`.
 
 ## Features
@@ -27,6 +28,7 @@ This project is currently shaped as an early preview release: `v0.1.0-alpha.2`.
 - Publish without mutating source notes
 - Browse a vault in a Bubble Tea TUI
 - Jump from the dashboard into inbox, daily notes, and recent notes
+- Open or create the current daily, weekly, and monthly notes from the dashboard or keyboard
 
 ## Download And Run
 
@@ -56,6 +58,9 @@ The selected vault is saved to `C:\Users\user\.yanp\config.json`.
 - `g`: return to the dashboard
 - `v`: switch to a different existing vault
 - `V`: create and switch to a new vault
+- `d`: open or create today's daily note
+- `w`: open or create this week's note
+- `m`: open or create this month's note
 - from the dashboard, open the vault health report when conflicts are detected
 - `n`: create a new note
 - `c`: capture to `inbox.md`

@@ -236,6 +236,77 @@ func TestConflictsReportsAllDuplicateTargets(t *testing.T) {
 	}
 }
 
+func TestEnsurePeriodicDailyNoteCreatesAndReuses(t *testing.T) {
+	root := t.TempDir()
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	when := time.Date(2026, 3, 30, 9, 0, 0, 0, time.Local)
+	note, created, err := v.EnsurePeriodicNote(PeriodicDaily, when)
+	if err != nil {
+		t.Fatalf("ensure daily note: %v", err)
+	}
+	if !created {
+		t.Fatalf("expected daily note to be created")
+	}
+	if note.RelPath != "daily/2026-03-30.md" {
+		t.Fatalf("unexpected daily path: %s", note.RelPath)
+	}
+
+	noteAgain, createdAgain, err := v.EnsurePeriodicNote(PeriodicDaily, when)
+	if err != nil {
+		t.Fatalf("reuse daily note: %v", err)
+	}
+	if createdAgain {
+		t.Fatalf("expected existing daily note to be reused")
+	}
+	if noteAgain.RelPath != note.RelPath {
+		t.Fatalf("expected same note path, got %s", noteAgain.RelPath)
+	}
+}
+
+func TestEnsurePeriodicWeeklyNoteUsesIsoWeekPath(t *testing.T) {
+	root := t.TempDir()
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	when := time.Date(2026, 3, 30, 9, 0, 0, 0, time.Local)
+	note, created, err := v.EnsurePeriodicNote(PeriodicWeekly, when)
+	if err != nil {
+		t.Fatalf("ensure weekly note: %v", err)
+	}
+	if !created {
+		t.Fatalf("expected weekly note to be created")
+	}
+	if note.RelPath != "weekly/2026-W14.md" {
+		t.Fatalf("unexpected weekly path: %s", note.RelPath)
+	}
+}
+
+func TestEnsurePeriodicMonthlyNoteUsesMonthPath(t *testing.T) {
+	root := t.TempDir()
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	when := time.Date(2026, 3, 30, 9, 0, 0, 0, time.Local)
+	note, created, err := v.EnsurePeriodicNote(PeriodicMonthly, when)
+	if err != nil {
+		t.Fatalf("ensure monthly note: %v", err)
+	}
+	if !created {
+		t.Fatalf("expected monthly note to be created")
+	}
+	if note.RelPath != "monthly/2026-03.md" {
+		t.Fatalf("unexpected monthly path: %s", note.RelPath)
+	}
+}
+
 func writeFixture(t *testing.T, root, relPath, content string) {
 	t.Helper()
 	fullPath := filepath.Join(root, filepath.FromSlash(relPath))
