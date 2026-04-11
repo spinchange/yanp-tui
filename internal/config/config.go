@@ -12,7 +12,14 @@ type Config struct {
 	NoOpen    bool           `json:"noOpen"`
 	Defaults  DefaultsConfig `json:"defaults"`
 	Templates string         `json:"templates"`
-	Queries   string         `json:"queries"`
+	Queries   []SavedQuery   `json:"queries,omitempty"`
+}
+
+// SavedQuery is a named filter that can be pinned to the dashboard.
+// Filter uses the same syntax as the interactive / filter prompt.
+type SavedQuery struct {
+	Name   string `json:"name"`
+	Filter string `json:"filter"`
 }
 
 type DefaultsConfig struct {

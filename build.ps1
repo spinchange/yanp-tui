@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "v0.1.0-alpha.2",
+    [string]$Version = "v0.2.0",
     [string]$OutputName = "yanp.exe"
 )
 

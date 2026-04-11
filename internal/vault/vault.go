@@ -20,8 +20,9 @@ var (
 )
 
 type Vault struct {
-	Root  string
-	Notes []*Note
+	Root        string
+	Notes       []*Note
+	ParseErrors []ParseError
 }
 
 type Note struct {
@@ -58,6 +59,14 @@ type UnresolvedLink struct {
 	Count  int
 }
 
+// ParseError records a frontmatter YAML parse failure for a specific note.
+// The note is still indexed with empty metadata; only its frontmatter fields
+// (title, aliases, tags, status) are unavailable.
+type ParseError struct {
+	RelPath string
+	Err     error
+}
+
 type PublishOptions struct {
 	OutputDir           string
 	SkipDrafts          bool
@@ -92,11 +101,14 @@ func Load(root string) (*Vault, error) {
 			return nil
 		}
 		if strings.EqualFold(filepath.Ext(d.Name()), ".md") {
-			note, err := parseNote(root, path)
+			note, parseErr, err := parseNote(root, path)
 			if err != nil {
 				return fmt.Errorf("%s: %w", path, err)
 			}
 			v.Notes = append(v.Notes, note)
+			if parseErr != nil {
+				v.ParseErrors = append(v.ParseErrors, *parseErr)
+			}
 		}
 		return nil
 	})
@@ -114,29 +126,35 @@ func Load(root string) (*Vault, error) {
 	return v, nil
 }
 
-func parseNote(root, path string) (*Note, error) {
+func parseNote(root, path string) (*Note, *ParseError, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	metadata := map[string]any{}
 	body := string(raw)
+	var parseErr *ParseError
 	if fm, content, ok := splitFrontmatter(raw); ok {
 		if err := yaml.Unmarshal(fm, &metadata); err != nil {
-			return nil, err
+			// Soft error: index the note with empty metadata so it remains
+			// visible; surface the parse failure through ParseError.
+			metadata = map[string]any{}
+			body = string(content)
+			parseErr = &ParseError{Err: err}
+		} else {
+			body = string(content)
 		}
-		body = string(content)
 	}
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	relPath, err := filepath.Rel(root, path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	relPath = filepath.ToSlash(relPath)
 	stem := strings.TrimSuffix(filepath.Base(relPath), filepath.Ext(relPath))
@@ -155,7 +173,7 @@ func parseNote(root, path string) (*Note, error) {
 	tags := mergeTags(stringSlice(metadata["tags"]), ExtractInlineTags(body))
 	status, _ := metadata["status"].(string)
 
-	return &Note{
+	note := &Note{
 		Path:       path,
 		RelPath:    relPath,
 		Stem:       stem,
@@ -167,7 +185,11 @@ func parseNote(root, path string) (*Note, error) {
 		Body:       body,
 		Metadata:   metadata,
 		ModifiedAt: info.ModTime(),
-	}, nil
+	}
+	if parseErr != nil {
+		parseErr.RelPath = relPath
+	}
+	return note, parseErr, nil
 }
 
 func splitFrontmatter(raw []byte) ([]byte, []byte, bool) {
@@ -624,11 +646,13 @@ func (v *Vault) CreateNote(relDir, title string, metadata map[string]any, body s
 	if err := os.WriteFile(fullPath, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
-	return parseNote(v.Root, fullPath)
+	note, _, err := parseNote(v.Root, fullPath)
+	return note, err
 }
 
+
 func (v *Vault) EnsurePeriodicNote(kind PeriodicKind, when time.Time) (*Note, bool, error) {
-	relPath, title, metadata, body, err := periodicSpec(kind, when)
+	relPath, metadata, body, err := periodicSpec(kind, when)
 	if err != nil {
 		return nil, false, err
 	}
@@ -644,14 +668,47 @@ func (v *Vault) EnsurePeriodicNote(kind PeriodicKind, when time.Time) (*Note, bo
 	if err := os.WriteFile(fullPath, []byte(rendered), 0o644); err != nil {
 		return nil, false, err
 	}
-	note, err := parseNote(v.Root, fullPath)
+	note, _, err := parseNote(v.Root, fullPath)
 	if err != nil {
 		return nil, false, err
 	}
 	v.Notes = append(v.Notes, note)
 	sortNotesByRecency(v.Notes)
-	_ = title
 	return note, true, nil
+}
+
+// PeriodicRelPath returns the vault-relative path for a periodic note of the
+// given kind at the given time. It does not create or read any file.
+func PeriodicRelPath(kind PeriodicKind, when time.Time) (string, error) {
+	relPath, _, _, err := periodicSpec(kind, when)
+	return relPath, err
+}
+
+// DraftNotes returns notes whose status field is "draft" (case-insensitive).
+func (v *Vault) DraftNotes() []*Note {
+	var drafts []*Note
+	for _, note := range v.Notes {
+		if strings.EqualFold(note.Status, "draft") {
+			drafts = append(drafts, note)
+		}
+	}
+	return drafts
+}
+
+// StaleNotes returns notes whose modification time is older than days days
+// before asOf. Returns nil if days is zero or negative.
+func (v *Vault) StaleNotes(days int, asOf time.Time) []*Note {
+	if days <= 0 {
+		return nil
+	}
+	cutoff := asOf.AddDate(0, 0, -days)
+	var stale []*Note
+	for _, note := range v.Notes {
+		if note.ModifiedAt.Before(cutoff) {
+			stale = append(stale, note)
+		}
+	}
+	return stale
 }
 
 func (v *Vault) Capture(text string) error {
@@ -682,6 +739,12 @@ func (v *Vault) RenameNote(relPath, newTitle string) (string, []string, error) {
 	}
 	newRelPath := filepath.ToSlash(filepath.Join(filepath.Dir(note.RelPath), newStem+".md"))
 	newAbsPath := filepath.Join(v.Root, filepath.FromSlash(newRelPath))
+	if newRelPath == note.RelPath {
+		return "", nil, fmt.Errorf("new title produces the same filename: %s", newRelPath)
+	}
+	if _, err := os.Stat(newAbsPath); err == nil {
+		return "", nil, fmt.Errorf("a note already exists at %s", newRelPath)
+	}
 	if err := os.MkdirAll(filepath.Dir(newAbsPath), 0o755); err != nil {
 		return "", nil, err
 	}
@@ -878,41 +941,38 @@ func isTagRune(r rune) bool {
 	}
 }
 
-func periodicSpec(kind PeriodicKind, when time.Time) (string, string, map[string]any, string, error) {
+func periodicSpec(kind PeriodicKind, when time.Time) (string, map[string]any, string, error) {
 	when = when.In(time.Local)
 	switch kind {
 	case PeriodicDaily:
 		stamp := when.Format("2006-01-02")
-		title := "Daily Note"
-		return filepath.ToSlash(filepath.Join("daily", stamp+".md")), title, map[string]any{
-			"title":  title,
+		return filepath.ToSlash(filepath.Join("daily", stamp+".md")), map[string]any{
+			"title":  stamp,
 			"date":   stamp,
 			"status": "active",
 			"source": "human",
 			"tags":   []string{"daily"},
-		}, "# " + title + "\n\nDate: " + stamp + "\n\n", nil
+		}, "# " + stamp + "\n\n", nil
 	case PeriodicWeekly:
 		year, week := when.ISOWeek()
 		stamp := fmt.Sprintf("%04d-W%02d", year, week)
-		title := "Weekly Note"
-		return filepath.ToSlash(filepath.Join("weekly", stamp+".md")), title, map[string]any{
-			"title":  title,
+		return filepath.ToSlash(filepath.Join("weekly", stamp+".md")), map[string]any{
+			"title":  stamp,
 			"date":   when.Format("2006-01-02"),
 			"status": "active",
 			"source": "human",
 			"tags":   []string{"weekly"},
-		}, "# " + title + "\n\nWeek: " + stamp + "\n\n", nil
+		}, "# " + stamp + "\n\n", nil
 	case PeriodicMonthly:
 		stamp := when.Format("2006-01")
-		title := "Monthly Note"
-		return filepath.ToSlash(filepath.Join("monthly", stamp+".md")), title, map[string]any{
-			"title":  title,
+		return filepath.ToSlash(filepath.Join("monthly", stamp+".md")), map[string]any{
+			"title":  stamp,
 			"date":   when.Format("2006-01-02"),
 			"status": "active",
 			"source": "human",
 			"tags":   []string{"monthly"},
-		}, "# " + title + "\n\nMonth: " + stamp + "\n\n", nil
+		}, "# " + stamp + "\n\n", nil
 	default:
-		return "", "", nil, "", fmt.Errorf("unsupported periodic note kind: %s", kind)
+		return "", nil, "", fmt.Errorf("unsupported periodic note kind: %s", kind)
 	}
 }

@@ -42,6 +42,7 @@ type actionMsg struct {
 	status    string
 	vaultPath string
 	notePath  string
+	warnings  []string
 	cfg       *config.Config
 	err       error
 }
@@ -70,6 +71,7 @@ type dashboardItem struct {
 	label   string
 	detail  string
 	relPath string
+	filter  string
 	action  string
 }
 
@@ -140,9 +142,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = max(20, msg.Width-42)
-		m.viewport.Height = max(8, msg.Height-8)
-		m.refreshPreview()
+		if m.mode == modeHealth {
+			m.refreshHealthView()
+		} else {
+			m.viewport.Width = max(20, msg.Width-42)
+			m.viewport.Height = max(8, msg.Height-8)
+			m.refreshPreview()
+		}
 	case tea.KeyMsg:
 		if m.mode == modeFirstRun {
 			switch msg.String() {
@@ -181,6 +187,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "q", "ctrl+c":
 				return m, tea.Quit
+			case "j", "down":
+				m.viewport.LineDown(1)
+			case "k", "up":
+				m.viewport.LineUp(1)
+			case "ctrl+d":
+				m.viewport.HalfViewDown()
+			case "ctrl+u":
+				m.viewport.HalfViewUp()
 			}
 			return m, nil
 		}
@@ -229,7 +243,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "n":
-				m.startPrompt(modeNew, "Title for new note")
+				m.startPrompt(modeNew, "Note title, or path/title for a subfolder")
 				return m, nil
 			case "c":
 				m.startPrompt(modeCapture, "Capture text for inbox.md")
@@ -288,7 +302,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.input.SetValue(filepath.Dir(m.vaultPath))
 			}
 		case "n":
-			m.startPrompt(modeNew, "Title for new note")
+			m.startPrompt(modeNew, "Note title, or path/title for a subfolder")
 		case "c":
 			m.startPrompt(modeCapture, "Capture text for inbox.md")
 		case "R":
@@ -321,7 +335,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.status = fmt.Sprintf("Refreshed %d notes", len(m.notes))
 		m.err = nil
-		m.refreshPreview()
+		if m.mode == modeHealth {
+			m.refreshHealthView()
+		} else {
+			m.refreshPreview()
+		}
 	case actionMsg:
 		m.input.Blur()
 		if msg.err != nil {
@@ -351,6 +369,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.status = msg.status
+		if len(msg.warnings) > 0 {
+			m.viewport.Width = max(20, m.width-42)
+			m.viewport.Height = max(8, m.height-8)
+			lines := []string{m.style.title.Render("Warnings"), ""}
+			for _, w := range msg.warnings {
+				lines = append(lines, "  "+w)
+			}
+			m.viewport.SetContent(strings.Join(lines, "\n"))
+			m.mode = modeBrowse
+		}
 		return m, nil
 	}
 
@@ -384,7 +412,8 @@ func (m Model) updatePrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case modeNew:
-			return m, createNoteCmd(m.vaultPath, value)
+			dir, title := parseNoteInput(value)
+			return m, createNoteCmd(m.vaultPath, dir, title)
 		case modeCapture:
 			return m, captureCmd(m.vaultPath, value)
 		case modeRename:
@@ -514,7 +543,7 @@ func promptLabel(mode mode) string {
 	case modeCreateVault:
 		return "Create a new vault"
 	case modeNew:
-		return "Create note in the vault root"
+		return "Create note — optionally prefix with a path: projects/My Note"
 	case modeCapture:
 		return "Append a capture entry to inbox.md"
 	case modeRename:
@@ -542,6 +571,8 @@ func (m Model) renderHelp() string {
 		"  g           Return to the dashboard",
 		"  v           Switch to a different vault location",
 		"  V           Create and switch to a new vault",
+		"  j / k       Scroll health view down / up",
+		"  ctrl+d/u    Half-page down / up in health view",
 		"  esc         Leave health/help or cancel a prompt",
 		"  n           Create a new note in the vault root",
 		"  c           Capture a quick entry into inbox.md",
@@ -600,6 +631,7 @@ func (m Model) renderOverview() string {
 	filtered := len(m.notes)
 	conflicts := m.vault.Conflicts()
 	unresolved := m.vault.UnresolvedLinks()
+	drafts := m.vault.DraftNotes()
 	inbox := "missing"
 	inboxEntries := 0
 	if m.vault.NoteByRelPath("inbox.md") != nil {
@@ -610,6 +642,12 @@ func (m Model) renderOverview() string {
 	weeklySummary := periodicSummary(m.vault, vault.PeriodicWeekly, time.Now())
 	monthlySummary := periodicSummary(m.vault, vault.PeriodicMonthly, time.Now())
 
+	staleDays := m.cfg.Defaults.StaleDays
+	if staleDays <= 0 {
+		staleDays = 30
+	}
+	staleNotes := m.vault.StaleNotes(staleDays, time.Now())
+
 	sections := []string{
 		m.style.title.Render("Overview"),
 		"",
@@ -618,6 +656,9 @@ func (m Model) renderOverview() string {
 		fmt.Sprintf("Visible notes: %d", filtered),
 		fmt.Sprintf("Inbox: %s", inbox),
 		fmt.Sprintf("Inbox entries: %d", inboxEntries),
+		fmt.Sprintf("Draft notes: %d", len(drafts)),
+		fmt.Sprintf("Stale notes (>%dd): %d", staleDays, len(staleNotes)),
+		fmt.Sprintf("Frontmatter errors: %d", len(m.vault.ParseErrors)),
 		fmt.Sprintf("Conflicts: %d", len(conflicts)),
 		fmt.Sprintf("Unresolved links: %d", unresolvedLinkCount(unresolved)),
 	}
@@ -729,11 +770,19 @@ func (m Model) dashboardItems() []dashboardItem {
 	})
 	conflicts := m.vault.Conflicts()
 	unresolved := m.vault.UnresolvedLinks()
-	if len(conflicts) > 0 || len(unresolved) > 0 {
+	parseErrors := m.vault.ParseErrors
+	if len(conflicts) > 0 || len(unresolved) > 0 || len(parseErrors) > 0 {
 		items = append(items, dashboardItem{
 			label:  "Open vault health report",
-			detail: fmt.Sprintf("%d conflict(s), %d unresolved link(s)", len(conflicts), unresolvedLinkCount(unresolved)),
+			detail: fmt.Sprintf("%d conflict(s), %d unresolved link(s), %d frontmatter error(s)", len(conflicts), unresolvedLinkCount(unresolved), len(parseErrors)),
 			action: "health",
+		})
+	}
+	if drafts := m.vault.DraftNotes(); len(drafts) > 0 {
+		items = append(items, dashboardItem{
+			label:  fmt.Sprintf("Browse drafts (%d)", len(drafts)),
+			detail: "notes with status: draft",
+			action: "drafts",
 		})
 	}
 	if note := m.vault.NoteByRelPath("inbox.md"); note != nil {
@@ -744,31 +793,42 @@ func (m Model) dashboardItems() []dashboardItem {
 			action:  "note",
 		})
 	}
-	items = append(items, dashboardItem{
-		label:  "Open today's daily note",
-		detail: "Create it if it does not exist yet",
-		action: "daily",
-	})
-	items = append(items, dashboardItem{
-		label:  "Open this week's note",
-		detail: "Create it if it does not exist yet",
-		action: "weekly",
-	})
-	items = append(items, dashboardItem{
-		label:  "Open this month's note",
-		detail: "Create it if it does not exist yet",
-		action: "monthly",
-	})
-	todayRel := filepath.ToSlash(filepath.Join("daily", time.Now().Format("2006-01-02")+".md"))
-	if note := m.vault.NoteByRelPath(todayRel); note != nil {
-		items = append(items, dashboardItem{
-			label:   "Open today's daily note",
-			detail:  note.RelPath,
-			relPath: note.RelPath,
-			action:  "note",
-		})
+
+	now := time.Now()
+	periodicSpecs := []struct {
+		kind  vault.PeriodicKind
+		label string
+	}{
+		{vault.PeriodicDaily, "Today's daily note"},
+		{vault.PeriodicWeekly, "This week's note"},
+		{vault.PeriodicMonthly, "This month's note"},
 	}
-	limit := min(5, len(m.notes))
+	for _, ps := range periodicSpecs {
+		relPath, err := vault.PeriodicRelPath(ps.kind, now)
+		if err != nil {
+			continue
+		}
+		if note := m.vault.NoteByRelPath(relPath); note != nil {
+			items = append(items, dashboardItem{
+				label:   ps.label + ": " + note.Title,
+				detail:  note.RelPath,
+				relPath: note.RelPath,
+				action:  "note",
+			})
+		} else {
+			items = append(items, dashboardItem{
+				label:  "Create " + ps.label,
+				detail: "Not created yet — press enter or d/w/m to create",
+				action: string(ps.kind),
+			})
+		}
+	}
+
+	limit := m.cfg.Defaults.DashboardLimit
+	if limit <= 0 {
+		limit = 5
+	}
+	limit = min(limit, len(m.notes))
 	for i := 0; i < limit; i++ {
 		note := m.notes[i]
 		items = append(items, dashboardItem{
@@ -776,6 +836,17 @@ func (m Model) dashboardItems() []dashboardItem {
 			detail:  note.RelPath,
 			relPath: note.RelPath,
 			action:  "note",
+		})
+	}
+	for _, q := range m.cfg.Queries {
+		if strings.TrimSpace(q.Name) == "" || strings.TrimSpace(q.Filter) == "" {
+			continue
+		}
+		items = append(items, dashboardItem{
+			label:  fmt.Sprintf("Query: %s", q.Name),
+			detail: q.Filter,
+			filter: q.Filter,
+			action: "query",
 		})
 	}
 	return items
@@ -809,6 +880,7 @@ func (m Model) activateDashboardItem() (tea.Model, tea.Cmd) {
 		return m, nil
 	case "health":
 		m.mode = modeHealth
+		m.refreshHealthView()
 		m.status = fmt.Sprintf("Vault health: %d conflict(s), %d unresolved link(s)", len(m.vault.Conflicts()), unresolvedLinkCount(m.vault.UnresolvedLinks()))
 		return m, nil
 	case "daily":
@@ -817,22 +889,39 @@ func (m Model) activateDashboardItem() (tea.Model, tea.Cmd) {
 		return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicWeekly)
 	case "monthly":
 		return m, ensurePeriodicCmd(m.vaultPath, vault.PeriodicMonthly)
+	case "drafts":
+		drafts := m.vault.DraftNotes()
+		m.notes = drafts
+		m.selected = 0
+		m.mode = modeBrowse
+		m.status = fmt.Sprintf("Showing %d draft note(s)", len(drafts))
+		m.refreshPreview()
+		return m, nil
+	case "query":
+		m.applyFilter(item.filter)
+		m.mode = modeBrowse
+		m.status = fmt.Sprintf("Query %q matched %d notes", item.label[len("Query: "):], len(m.notes))
+		m.refreshPreview()
+		return m, nil
 	default:
 		return m, nil
 	}
 }
 
-func (m Model) renderHealth() string {
-	header := m.style.title.Render("YANP Vault Health") + "\n" +
-		m.style.subtle.Render("g or esc return to dashboard  ? help  q quit")
+func (m *Model) refreshHealthView() {
+	m.viewport.Width = max(20, m.width-6)
+	m.viewport.Height = max(8, m.height-10)
+
 	conflicts := m.vault.Conflicts()
 	unresolved := m.vault.UnresolvedLinks()
 
-	lines := []string{}
-	if len(conflicts) == 0 && len(unresolved) == 0 {
-		lines = append(lines, "No duplicate targets or unresolved wikilinks detected.")
+	parseErrors := m.vault.ParseErrors
+
+	var lines []string
+	if len(conflicts) == 0 && len(unresolved) == 0 && len(parseErrors) == 0 {
+		lines = append(lines, "No issues detected.")
 	} else {
-		lines = append(lines, "Conflicts", "")
+		lines = append(lines, m.style.title.Render("Conflicts"), "")
 		if len(conflicts) == 0 {
 			lines = append(lines, "No duplicate title, alias, or filename targets detected.", "")
 		} else {
@@ -849,7 +938,18 @@ func (m Model) renderHealth() string {
 			}
 		}
 
-		lines = append(lines, "Unresolved wikilinks", "")
+		lines = append(lines, m.style.title.Render("Malformed frontmatter"), "")
+		if len(parseErrors) == 0 {
+			lines = append(lines, "No frontmatter parse errors detected.", "")
+		} else {
+			lines = append(lines, fmt.Sprintf("Detected %d note(s) with unparseable frontmatter.", len(parseErrors)), "")
+			for _, pe := range parseErrors {
+				lines = append(lines, fmt.Sprintf("%s", pe.RelPath))
+				lines = append(lines, fmt.Sprintf("  %s", pe.Err.Error()), "")
+			}
+		}
+
+		lines = append(lines, m.style.title.Render("Unresolved wikilinks"), "")
 		if len(unresolved) == 0 {
 			lines = append(lines, "No unresolved wikilinks detected.")
 		} else {
@@ -864,8 +964,14 @@ func (m Model) renderHealth() string {
 		}
 	}
 
-	content := m.style.panel.Width(max(50, m.width-6)).Render(header + "\n\n" + strings.Join(lines, "\n"))
-	return lipgloss.NewStyle().Padding(1, 2).Render(content)
+	m.viewport.SetContent(strings.Join(lines, "\n"))
+}
+
+func (m Model) renderHealth() string {
+	header := m.style.title.Render("YANP Vault Health") + "\n" +
+		m.style.subtle.Render("j/k scroll  ctrl+d/u half page  g/esc dashboard  ? help  q quit")
+	content := m.style.panel.Width(max(50, m.width-6)).Height(max(10, m.height-8)).Render(m.viewport.View())
+	return lipgloss.NewStyle().Padding(1, 2).Render(header + "\n\n" + content)
 }
 
 func (m *Model) applyFilter(query string) {
@@ -949,10 +1055,13 @@ func switchVaultCmd(cfg config.Config, root string) tea.Cmd {
 		}
 		info, err := os.Stat(root)
 		if err != nil {
+			if os.IsNotExist(err) {
+				return actionMsg{err: fmt.Errorf("path does not exist: %s\nUse Shift+V to create a new vault here", root)}
+			}
 			return actionMsg{err: err}
 		}
 		if !info.IsDir() {
-			return actionMsg{err: fmt.Errorf("%s is not a directory", root)}
+			return actionMsg{err: fmt.Errorf("%s is a file, not a directory", root)}
 		}
 		cfg.Vault = root
 		if cfg.Defaults.StaleDays == 0 {
@@ -981,9 +1090,14 @@ func createVaultCmd(cfg config.Config, root string) tea.Cmd {
 		if err := os.MkdirAll(root, 0o755); err != nil {
 			return actionMsg{err: err}
 		}
+		var created []string
 		for _, rel := range []string{"daily", "weekly", "monthly", "assets", "templates"} {
-			if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
-				return actionMsg{err: err}
+			dir := filepath.Join(root, rel)
+			if _, err := os.Stat(dir); os.IsNotExist(err) {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					return actionMsg{err: err}
+				}
+				created = append(created, rel+"/")
 			}
 		}
 		inboxPath := filepath.Join(root, "inbox.md")
@@ -991,6 +1105,7 @@ func createVaultCmd(cfg config.Config, root string) tea.Cmd {
 			if err := os.WriteFile(inboxPath, []byte("# Inbox\n\n"), 0o644); err != nil {
 				return actionMsg{err: err}
 			}
+			created = append(created, "inbox.md")
 		}
 		cfg.Vault = root
 		if cfg.Templates == "" {
@@ -1005,8 +1120,12 @@ func createVaultCmd(cfg config.Config, root string) tea.Cmd {
 		if err := config.Save(cfg); err != nil {
 			return actionMsg{err: err}
 		}
+		status := "Created vault " + root
+		if len(created) > 0 {
+			status += " — scaffolded: " + strings.Join(created, ", ")
+		}
 		return actionMsg{
-			status:    "Created and selected vault " + root,
+			status:    status,
 			vaultPath: root,
 			cfg:       &cfg,
 		}
@@ -1035,7 +1154,7 @@ func ensurePeriodicCmd(root string, kind vault.PeriodicKind) tea.Cmd {
 	}
 }
 
-func createNoteCmd(root, title string) tea.Cmd {
+func createNoteCmd(root, dir, title string) tea.Cmd {
 	return func() tea.Msg {
 		if strings.TrimSpace(title) == "" {
 			return actionMsg{err: fmt.Errorf("title is required")}
@@ -1044,7 +1163,7 @@ func createNoteCmd(root, title string) tea.Cmd {
 		if err != nil {
 			return actionMsg{err: err}
 		}
-		_, err = v.CreateNote("", title, map[string]any{
+		note, err := v.CreateNote(dir, title, map[string]any{
 			"title":  title,
 			"status": "active",
 			"source": "human",
@@ -1053,7 +1172,8 @@ func createNoteCmd(root, title string) tea.Cmd {
 		if err != nil {
 			return actionMsg{err: err}
 		}
-		return actionMsg{status: "Note created"}
+		status := "Created " + note.RelPath
+		return actionMsg{status: status}
 	}
 }
 
@@ -1080,11 +1200,14 @@ func renameCmd(root, relPath, title string) tea.Cmd {
 			return actionMsg{err: err}
 		}
 		newPath, warnings, err := v.RenameNote(relPath, title)
+		if err != nil {
+			return actionMsg{err: err}
+		}
 		status := "Renamed to " + newPath
 		if len(warnings) > 0 {
-			status += fmt.Sprintf(" (%d warnings)", len(warnings))
+			status += fmt.Sprintf(" — %d link rewrite warning(s), see details below", len(warnings))
 		}
-		return actionMsg{status: status, err: err}
+		return actionMsg{status: status, warnings: warnings}
 	}
 }
 
@@ -1102,12 +1225,31 @@ func publishCmd(root, outputDir string) tea.Cmd {
 			MarkUnresolved:      true,
 			PreserveFrontmatter: true,
 		})
+		if err != nil {
+			return actionMsg{err: err}
+		}
 		status := fmt.Sprintf("Published %d notes to %s", len(v.Notes), outputDir)
 		if len(warnings) > 0 {
-			status += fmt.Sprintf(" with %d warnings", len(warnings))
+			status += fmt.Sprintf(" — %d warning(s), see details below", len(warnings))
 		}
-		return actionMsg{status: status, err: err}
+		return actionMsg{status: status, warnings: warnings}
 	}
+}
+
+// parseNoteInput splits a note creation prompt value into a vault-relative
+// directory and a title. If the input contains a "/" the portion before the
+// last "/" is treated as the directory and the remainder as the title.
+// Examples:
+//
+//	"My Note"            → ("",            "My Note")
+//	"projects/My Note"   → ("projects",    "My Note")
+//	"a/b/My Note"        → ("a/b",         "My Note")
+func parseNoteInput(input string) (dir, title string) {
+	input = strings.TrimSpace(input)
+	if idx := strings.LastIndex(input, "/"); idx >= 0 {
+		return strings.TrimSpace(input[:idx]), strings.TrimSpace(input[idx+1:])
+	}
+	return "", input
 }
 
 func truncate(input string, maxLen int) string {
@@ -1165,7 +1307,7 @@ func inboxEntryCount(note *vault.Note) int {
 }
 
 func periodicSummary(v *vault.Vault, kind vault.PeriodicKind, when time.Time) string {
-	relPath, _, _, _, err := vaultPeriodicSpec(kind, when)
+	relPath, err := vault.PeriodicRelPath(kind, when)
 	if err != nil {
 		return "unavailable"
 	}
@@ -1174,20 +1316,4 @@ func periodicSummary(v *vault.Vault, kind vault.PeriodicKind, when time.Time) st
 		return "not created yet"
 	}
 	return note.RelPath
-}
-
-func vaultPeriodicSpec(kind vault.PeriodicKind, when time.Time) (string, string, map[string]any, string, error) {
-	switch kind {
-	case vault.PeriodicDaily:
-		stamp := when.In(time.Local).Format("2006-01-02")
-		return filepath.ToSlash(filepath.Join("daily", stamp+".md")), "", nil, "", nil
-	case vault.PeriodicWeekly:
-		year, week := when.In(time.Local).ISOWeek()
-		return filepath.ToSlash(filepath.Join("weekly", fmt.Sprintf("%04d-W%02d.md", year, week))), "", nil, "", nil
-	case vault.PeriodicMonthly:
-		stamp := when.In(time.Local).Format("2006-01")
-		return filepath.ToSlash(filepath.Join("monthly", stamp+".md")), "", nil, "", nil
-	default:
-		return "", "", nil, "", fmt.Errorf("unsupported periodic note kind: %s", kind)
-	}
 }

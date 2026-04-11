@@ -341,6 +341,198 @@ func TestEnsurePeriodicMonthlyNoteUsesMonthPath(t *testing.T) {
 	}
 }
 
+func TestRenameRejectsConflictingDestination(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "alpha.md", "---\ntitle: Alpha\n---\n")
+	writeFixture(t, root, "gamma.md", "---\ntitle: Gamma\n---\n")
+
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	_, _, err = v.RenameNote("alpha.md", "Gamma")
+	if err == nil {
+		t.Fatalf("expected error when renaming to an existing note's slug")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected 'already exists' error, got: %v", err)
+	}
+
+	// alpha.md should be unchanged
+	raw, readErr := os.ReadFile(filepath.Join(root, "alpha.md"))
+	if readErr != nil {
+		t.Fatalf("read alpha: %v", readErr)
+	}
+	if !strings.Contains(string(raw), "Alpha") {
+		t.Fatalf("expected alpha.md to be unchanged after failed rename")
+	}
+}
+
+func TestRenameRejectsSameTitle(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "alpha.md", "---\ntitle: Alpha\n---\n")
+
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	_, _, err = v.RenameNote("alpha.md", "Alpha")
+	if err == nil {
+		t.Fatalf("expected error when renaming to the same filename")
+	}
+	if !strings.Contains(err.Error(), "same filename") {
+		t.Fatalf("expected 'same filename' error, got: %v", err)
+	}
+}
+
+func TestMalformedFrontmatterIsRecordedNotFatal(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "good.md", "---\ntitle: Good\n---\n\nBody.\n")
+	writeFixture(t, root, "bad.md", "---\ntitle: [unclosed\n---\n\nBody.\n")
+	writeFixture(t, root, "no-fm.md", "# No frontmatter\n")
+
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load should succeed even with malformed frontmatter: %v", err)
+	}
+	if len(v.Notes) != 3 {
+		t.Fatalf("expected all 3 notes indexed, got %d", len(v.Notes))
+	}
+	if len(v.ParseErrors) != 1 {
+		t.Fatalf("expected 1 parse error, got %d", len(v.ParseErrors))
+	}
+	if v.ParseErrors[0].RelPath != "bad.md" {
+		t.Fatalf("expected parse error for bad.md, got %q", v.ParseErrors[0].RelPath)
+	}
+	if v.ParseErrors[0].Err == nil {
+		t.Fatalf("expected non-nil error in ParseError")
+	}
+
+	// bad.md should still be browsable with stem as title
+	bad := v.NoteByRelPath("bad.md")
+	if bad == nil {
+		t.Fatalf("expected bad.md to be indexed")
+	}
+	if bad.Title != "bad" {
+		t.Fatalf("expected stem as title for malformed note, got %q", bad.Title)
+	}
+}
+
+func TestDraftNotes(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "draft-one.md", "---\ntitle: Draft One\nstatus: draft\n---\n")
+	writeFixture(t, root, "draft-two.md", "---\ntitle: Draft Two\nstatus: Draft\n---\n") // case variation
+	writeFixture(t, root, "active.md", "---\ntitle: Active\nstatus: active\n---\n")
+	writeFixture(t, root, "no-status.md", "# No Status\n")
+
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	drafts := v.DraftNotes()
+	if len(drafts) != 2 {
+		t.Fatalf("expected 2 draft notes, got %d", len(drafts))
+	}
+	for _, d := range drafts {
+		if !strings.EqualFold(d.Status, "draft") {
+			t.Fatalf("expected draft status, got %q in %s", d.Status, d.RelPath)
+		}
+	}
+}
+
+func TestPeriodicNoteHasDateSpecificTitle(t *testing.T) {
+	root := t.TempDir()
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	when := time.Date(2026, 4, 11, 9, 0, 0, 0, time.Local)
+
+	dailyNote, _, err := v.EnsurePeriodicNote(PeriodicDaily, when)
+	if err != nil {
+		t.Fatalf("ensure daily: %v", err)
+	}
+	if dailyNote.Title != "2026-04-11" {
+		t.Fatalf("expected daily title '2026-04-11', got %q", dailyNote.Title)
+	}
+
+	weeklyNote, _, err := v.EnsurePeriodicNote(PeriodicWeekly, when)
+	if err != nil {
+		t.Fatalf("ensure weekly: %v", err)
+	}
+	if weeklyNote.Title != "2026-W15" {
+		t.Fatalf("expected weekly title '2026-W15', got %q", weeklyNote.Title)
+	}
+
+	monthlyNote, _, err := v.EnsurePeriodicNote(PeriodicMonthly, when)
+	if err != nil {
+		t.Fatalf("ensure monthly: %v", err)
+	}
+	if monthlyNote.Title != "2026-04" {
+		t.Fatalf("expected monthly title '2026-04', got %q", monthlyNote.Title)
+	}
+}
+
+func TestPeriodicRelPath(t *testing.T) {
+	when := time.Date(2026, 4, 11, 9, 0, 0, 0, time.Local)
+
+	daily, err := PeriodicRelPath(PeriodicDaily, when)
+	if err != nil {
+		t.Fatalf("daily rel path: %v", err)
+	}
+	if daily != "daily/2026-04-11.md" {
+		t.Fatalf("expected daily/2026-04-11.md, got %q", daily)
+	}
+
+	weekly, err := PeriodicRelPath(PeriodicWeekly, when)
+	if err != nil {
+		t.Fatalf("weekly rel path: %v", err)
+	}
+	if weekly != "weekly/2026-W15.md" {
+		t.Fatalf("expected weekly/2026-W15.md, got %q", weekly)
+	}
+
+	monthly, err := PeriodicRelPath(PeriodicMonthly, when)
+	if err != nil {
+		t.Fatalf("monthly rel path: %v", err)
+	}
+	if monthly != "monthly/2026-04.md" {
+		t.Fatalf("expected monthly/2026-04.md, got %q", monthly)
+	}
+}
+
+func TestStaleNotes(t *testing.T) {
+	root := t.TempDir()
+	asOf := time.Date(2026, 4, 11, 12, 0, 0, 0, time.UTC)
+	recent := asOf.AddDate(0, 0, -10) // 10 days ago — not stale at 30 days
+	stale := asOf.AddDate(0, 0, -45)  // 45 days ago — stale at 30 days
+
+	writeFixtureAt(t, root, "new-note.md", "# New\n", recent)
+	writeFixtureAt(t, root, "old-note.md", "# Old\n", stale)
+
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	got := v.StaleNotes(30, asOf)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 stale note, got %d", len(got))
+	}
+	if got[0].RelPath != "old-note.md" {
+		t.Fatalf("expected old-note.md to be stale, got %s", got[0].RelPath)
+	}
+
+	gotNone := v.StaleNotes(0, asOf)
+	if len(gotNone) != 0 {
+		t.Fatalf("expected no stale notes when days=0, got %d", len(gotNone))
+	}
+}
+
 func writeFixture(t *testing.T, root, relPath, content string) {
 	t.Helper()
 	fullPath := filepath.Join(root, filepath.FromSlash(relPath))

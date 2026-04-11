@@ -102,7 +102,7 @@ Do not cut `v0.2.0` until the main flows are verified end to end.
 
 ### Suggested release sequence
 
-- `v0.2.0-beta.1`: daily notes plus dashboard entry points
-- `v0.2.0-beta.2`: weekly and monthly notes plus saved queries
-- `v0.2.0-rc.1`: expanded health reporting and workflow polish
-- `v0.2.0`: release after verification, doc sync, and artifact refresh
+- `v0.2.0-beta.1`: daily notes plus dashboard entry points — **shipped**
+- `v0.2.0-beta.2`: weekly and monthly notes plus saved queries — **shipped**
+- `v0.2.0-rc.1`: expanded health reporting and workflow polish — **shipped**
+- `v0.2.0`: release after verification, doc sync, and artifact refresh — **shipped**

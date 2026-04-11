@@ -4,18 +4,19 @@
 
 YANP-TUI stands for `Yet Another Notes Project - Terminal User Interface`.
 
-This project is currently shaped as an early preview release: `v0.1.0-alpha.2`.
+Current release: `v0.2.0`
 
 ## Current Status
 
 - Core YANP vault indexing works.
 - Wikilinks resolve by title, alias, then filename stem.
-- Rename updates inbound wikilinks across the vault.
+- Rename updates inbound wikilinks across the vault, with conflict detection before any file is written.
 - Publish writes CommonMark output to a separate directory.
 - The TUI includes a dashboard, browser, preview, filtering, help, capture, create, rename, and publish flows.
-- The dashboard now exposes vault-health conflicts and unresolved wikilinks through a dedicated health report.
-- Daily, weekly, and monthly notes can be created or opened directly from the TUI.
-- The dashboard summarizes inbox state and the current daily, weekly, and monthly notes.
+- Daily, weekly, and monthly notes use date-specific titles and can be created or opened from the dashboard or keyboard.
+- The dashboard surfaces inbox state, current-period notes, recent notes, draft notes, stale note counts, and saved queries from config.
+- Vault health reports duplicate targets, unresolved wikilinks, and malformed frontmatter, with a scrollable detail view.
+- Rename and publish warnings are shown in the browser viewport after the operation completes.
 - Tests and builds are passing with `-buildvcs=false`.
 
 ## Features
@@ -26,36 +27,63 @@ This project is currently shaped as an early preview release: `v0.1.0-alpha.2`.
 - Resolve wikilinks using YANP precedence rules
 - Detect and report deterministic conflict winners
 - Rewrite inbound links when notes are renamed
-- Publish without mutating source notes
+- Publish without mutating source notes; skip drafts with `-skip-drafts`
 - Browse a vault in a Bubble Tea TUI
-- Jump from the dashboard into inbox, daily notes, and recent notes
+- Dashboard with inbox, current-period, recent, draft, and saved-query shortcuts
 - Open or create the current daily, weekly, and monthly notes from the dashboard or keyboard
-- See inbox and current-period summaries directly on the dashboard
-- Detect unresolved wikilinks in the dashboard health view
+- Create notes in any vault subdirectory using `path/Title` syntax
+- Scrollable vault health view: duplicate targets, unresolved wikilinks, malformed frontmatter
+- Rename and publish warnings surfaced in the viewport after completion
+- Saved queries pinned to the dashboard via `~/.yanp/config.json`
+- Stale-note and draft-note counts in the dashboard overview
 
 ## Download And Run
 
 You can download the Windows build from the GitHub release page:
 
-- [v0.1.0-alpha.2 release](https://github.com/spinchange/yanp-tui/releases/tag/v0.1.0-alpha.2)
+- [v0.2.0 release](https://github.com/spinchange/yanp-tui/releases/tag/v0.2.0)
 
 You have two options:
 
 1. Download `yanp.exe` directly and run it
-2. Download `yanp-v0.1.0-alpha.2-windows-amd64.zip`, extract it, and run `yanp.exe`
+2. Download `yanp-v0.2.0-windows-amd64.zip`, extract it, and run `yanp.exe`
 
-For normal use, point the app at your own private real vault. See [docs/VAULTS.md](C:\Users\user\yanp-tui\docs\VAULTS.md) and [config.example.json](C:\Users\user\yanp-tui\config.example.json).
+For normal use, point the app at your own private real vault. See [docs/VAULTS.md](docs/VAULTS.md) and [config.example.json](config.example.json).
 
-On first run, if no vault is configured yet, YANP-TUI now opens a setup flow instead of guessing a folder. You can:
+On first run, if no vault is configured yet, YANP-TUI opens a setup flow. You can:
 
 - enter the path to an existing vault
 - press `V` to create a new vault at a path you choose
 
-The selected vault is saved to `C:\Users\user\.yanp\config.json`.
+The selected vault is saved to `~/.yanp/config.json`.
+
+## Config
+
+`~/.yanp/config.json` supports the following fields:
+
+```json
+{
+  "vault": "/path/to/your/vault",
+  "editor": "",
+  "noOpen": false,
+  "defaults": {
+    "staleDays": 30,
+    "dashboardLimit": 5
+  },
+  "templates": "/path/to/templates",
+  "queries": [
+    { "name": "Drafts", "filter": "status:draft" },
+    { "name": "Project Alpha", "filter": "#project/alpha" }
+  ]
+}
+```
+
+Saved queries appear as selectable dashboard shortcuts and run the same filter as the `/` prompt.
 
 ## Key TUI Controls
 
-- `j` / `k`: move selection
+- `j` / `k`: move selection (also scrolls the health view)
+- `ctrl+d` / `ctrl+u`: half-page scroll in the health view
 - `enter`: open the selected dashboard item
 - `/`: filter notes
 - `g`: return to the dashboard
@@ -64,11 +92,11 @@ The selected vault is saved to `C:\Users\user\.yanp\config.json`.
 - `d`: open or create today's daily note
 - `w`: open or create this week's note
 - `m`: open or create this month's note
-- from the dashboard, open the vault health report when conflicts or unresolved wikilinks are detected
-- `n`: create a new note
+- `n`: create a new note (prefix with `path/` to target a subfolder, e.g. `projects/My Note`)
 - `c`: capture to `inbox.md`
 - `R`: rename selected note
-- `p`: publish
+- `p`: publish vault to a CommonMark output directory
+- `r`: refresh the vault index
 - `?` or `h`: help
 - `q`: quit
 
@@ -76,13 +104,12 @@ The selected vault is saved to `C:\Users\user\.yanp\config.json`.
 
 ```powershell
 go run -buildvcs=false ./cmd/yanp publish -vault .\testdata\sample-vault -out .\published
+go run -buildvcs=false ./cmd/yanp publish -vault .\testdata\sample-vault -out .\published -skip-drafts
 go run -buildvcs=false ./cmd/yanp capture -vault .\testdata\sample-vault -text "Follow up with [[Alice]]"
 go run -buildvcs=false ./cmd/yanp rename -vault .\testdata\sample-vault -note projects/sprint-review.md -title "Sprint Demo"
 ```
 
 ## Run From Source
-
-From `C:\Users\user\yanp-tui`:
 
 ```powershell
 go run -buildvcs=false ./cmd/yanp -vault .\testdata\sample-vault
@@ -97,41 +124,16 @@ go run -buildvcs=false ./cmd/yanp -vault .\testdata\sample-vault
 This produces:
 
 - `dist\yanp.exe`
-- `dist\yanp-v0.1.0-alpha.2-windows-amd64.zip`
+- `dist\yanp-v0.2.0-windows-amd64.zip`
 
 ## Project Layout
 
 - `cmd/yanp`: entry point
-- `internal/app`: command routing
-- `internal/config`: YANP-style config loading
+- `internal/app`: command routing and CLI flags
+- `internal/config`: config loading and `SavedQuery` type
 - `internal/ui`: Bubble Tea terminal interface
-- `internal/vault`: indexing, parsing, resolution, publish, and rename logic
+- `internal/vault`: indexing, parsing, resolution, publish, rename, and health logic
 - `docs/DEVLOG.md`: development log
 - `docs/VAULTS.md`: sample-vault vs real-vault guidance
 - `config.example.json`: example config for your own real vault path
 - `testdata/sample-vault`: dogfood vault and examples
-
-## Release Notes
-
-This repo is currently aimed at a small first release in the style of:
-
-- version: `v0.1.0-alpha.2`
-- platform artifact: Windows `amd64`
-- distribution: zipped binary plus project docs
-
-## Known Gaps
-
-- Periodic note creation flows are still minimal.
-- Vault health does not yet cover malformed frontmatter or stale-note summaries.
-- The release artifact name is `yanp.exe`.
-
-## Next Milestone
-
-The current working target after `v0.1.0-alpha.2` is `v0.2.0`.
-
-Planned focus:
-
-- periodic note creation for `daily/`, `weekly/`, and `monthly/`
-- richer dashboard widgets and saved queries
-- stronger vault-health surfacing for duplicate targets and unresolved wikilinks
-- more polished create and rename workflows
