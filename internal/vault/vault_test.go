@@ -533,6 +533,147 @@ func TestStaleNotes(t *testing.T) {
 	}
 }
 
+func TestInboundLinks(t *testing.T) {
+	root := t.TempDir()
+	// target note
+	writeFixture(t, root, "target.md", "---\ntitle: Target Note\n---\n\n# Target\n")
+	// two sources that link to target
+	writeFixture(t, root, "source-a.md", "See [[Target Note]] for details.\n")
+	writeFixture(t, root, "source-b.md", "Also check [[Target Note|the target]].\n")
+	// a note with no link to target
+	writeFixture(t, root, "unrelated.md", "Nothing here links to target.\n")
+	// a note whose only link to target is inside a code fence — must not count
+	writeFixture(t, root, "fenced.md", strings.Join([]string{
+		"Some prose.",
+		"```",
+		"[[Target Note]]",
+		"```",
+		"End.",
+		"",
+	}, "\n"))
+
+	v, err := Load(root)
+	if err != nil {
+		t.Fatalf("load vault: %v", err)
+	}
+
+	// Two inbound links from different sources
+	got := v.InboundLinks("target.md")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 inbound links, got %d: %v", len(got), got)
+	}
+	if got[0] != "source-a.md" || got[1] != "source-b.md" {
+		t.Fatalf("expected [source-a.md source-b.md], got %v", got)
+	}
+
+	// No inbound links
+	gotNone := v.InboundLinks("unrelated.md")
+	if len(gotNone) != 0 {
+		t.Fatalf("expected no inbound links for unrelated.md, got %v", gotNone)
+	}
+
+	// Wikilink inside code fence is not counted
+	gotFenced := v.InboundLinks("fenced.md")
+	if len(gotFenced) != 0 {
+		t.Fatalf("expected no inbound links for fenced.md, got %v", gotFenced)
+	}
+
+	// Target note is not included in its own inbound links
+	for _, p := range got {
+		if p == "target.md" {
+			t.Fatalf("target note must not appear in its own inbound links")
+		}
+	}
+}
+
+func TestDeleteNote(t *testing.T) {
+	t.Run("happy path: note removed from disk and v.Notes", func(t *testing.T) {
+		root := t.TempDir()
+		writeFixture(t, root, "alpha.md", "---\ntitle: Alpha\n---\n\n# Alpha\n")
+		writeFixture(t, root, "beta.md", "---\ntitle: Beta\n---\n\n# Beta\n")
+
+		v, err := Load(root)
+		if err != nil {
+			t.Fatalf("load vault: %v", err)
+		}
+		if len(v.Notes) != 2 {
+			t.Fatalf("expected 2 notes, got %d", len(v.Notes))
+		}
+
+		warnings, err := v.DeleteNote("alpha.md")
+		if err != nil {
+			t.Fatalf("delete note: %v", err)
+		}
+		if len(warnings) != 0 {
+			t.Fatalf("expected no warnings, got %v", warnings)
+		}
+
+		// File must be gone from disk.
+		if _, statErr := os.Stat(filepath.Join(root, "alpha.md")); statErr == nil {
+			t.Fatalf("expected alpha.md to be deleted from disk")
+		}
+
+		// Note must be removed from v.Notes.
+		if len(v.Notes) != 1 {
+			t.Fatalf("expected 1 note after delete, got %d", len(v.Notes))
+		}
+		if v.NoteByRelPath("alpha.md") != nil {
+			t.Fatalf("expected alpha.md to be removed from v.Notes")
+		}
+	})
+
+	t.Run("inbound links: warnings returned, delete still succeeds", func(t *testing.T) {
+		root := t.TempDir()
+		writeFixture(t, root, "target.md", "---\ntitle: Target\n---\n\n# Target\n")
+		writeFixture(t, root, "source-a.md", "See [[Target]] for details.\n")
+		writeFixture(t, root, "source-b.md", "Also check [[Target|the target]].\n")
+
+		v, err := Load(root)
+		if err != nil {
+			t.Fatalf("load vault: %v", err)
+		}
+
+		warnings, err := v.DeleteNote("target.md")
+		if err != nil {
+			t.Fatalf("delete note: %v", err)
+		}
+		if len(warnings) != 2 {
+			t.Fatalf("expected 2 warnings, got %d: %v", len(warnings), warnings)
+		}
+		for _, w := range warnings {
+			if !strings.Contains(w, "links to deleted note") {
+				t.Fatalf("unexpected warning format: %q", w)
+			}
+		}
+
+		// Delete still succeeded.
+		if _, statErr := os.Stat(filepath.Join(root, "target.md")); statErr == nil {
+			t.Fatalf("expected target.md to be deleted from disk")
+		}
+		if v.NoteByRelPath("target.md") != nil {
+			t.Fatalf("expected target.md to be removed from v.Notes")
+		}
+	})
+
+	t.Run("note not found: returns error containing 'not found'", func(t *testing.T) {
+		root := t.TempDir()
+		writeFixture(t, root, "alpha.md", "# Alpha\n")
+
+		v, err := Load(root)
+		if err != nil {
+			t.Fatalf("load vault: %v", err)
+		}
+
+		_, err = v.DeleteNote("nonexistent.md")
+		if err == nil {
+			t.Fatalf("expected error for nonexistent note")
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			t.Fatalf("expected 'not found' in error, got: %v", err)
+		}
+	})
+}
+
 func writeFixture(t *testing.T, root, relPath, content string) {
 	t.Helper()
 	fullPath := filepath.Join(root, filepath.FromSlash(relPath))

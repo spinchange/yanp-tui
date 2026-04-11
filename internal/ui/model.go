@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -31,6 +32,7 @@ const (
 	modeCapture
 	modeRename
 	modePublish
+	modeConfirmDelete
 )
 
 type reloadMsg struct {
@@ -251,6 +253,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.mode == modeConfirmDelete {
+			switch msg.String() {
+			case "D":
+				if note := m.currentNote(); note != nil {
+					return m, deleteNoteCmd(m.vaultPath, note.RelPath)
+				}
+				m.mode = modeBrowse
+				m.status = "Nothing to delete"
+			case "ctrl+c":
+				return m, tea.Quit
+			default:
+				m.mode = modeBrowse
+				m.status = "Delete cancelled"
+			}
+			return m, nil
+		}
 		if m.mode != modeBrowse {
 			return m.updatePrompt(msg)
 		}
@@ -313,6 +331,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "p":
 			m.startPrompt(modePublish, "Publish output directory")
 			m.input.SetValue(filepath.Join(m.vaultPath, "_published"))
+		case "o":
+			if note := m.currentNote(); note != nil {
+				editor := resolveEditor(m.cfg)
+				return m, openInEditorCmd(editor, note.Path, m.vaultPath)
+			}
+		case "D":
+			if m.currentNote() != nil {
+				m.mode = modeConfirmDelete
+				m.status = fmt.Sprintf("Delete %q? Press D to confirm, any other key cancels", m.currentNote().Title)
+			}
 		}
 	case reloadMsg:
 		if msg.err != nil {
@@ -447,7 +475,7 @@ func (m Model) View() string {
 	rightWidth := max(20, m.width-leftWidth-5)
 
 	header := m.style.title.Render("YANP TUI") + "\n" +
-		m.style.subtle.Render("j/k move  / filter  g dashboard  v switch vault  V new vault  n new  c capture  R rename  p publish  r refresh  ? help  q quit")
+		m.style.subtle.Render("j/k move  o open  / filter  g dashboard  v switch vault  V new vault  n new  c capture  R rename  D delete  p publish  r refresh  ? help  q quit")
 
 	list := m.renderList(leftWidth)
 	preview := m.style.panel.Width(rightWidth).Height(max(10, m.height-8)).Render(m.viewport.View())
@@ -460,7 +488,9 @@ func (m Model) View() string {
 		statusText = m.err.Error()
 	}
 	footer := statusStyle.Render(statusText)
-	if m.mode != modeBrowse {
+	if m.mode == modeConfirmDelete {
+		// confirmation prompt — no text input needed
+	} else if m.mode != modeBrowse {
 		footer += "\n" + m.style.subtle.Render(promptLabel(m.mode)) + "\n" + m.input.View()
 	} else if m.currentFilter() != "" {
 		footer += "\n" + m.style.subtle.Render("Active filter: "+m.currentFilter()+"  (esc clears)")
@@ -550,6 +580,8 @@ func promptLabel(mode mode) string {
 		return "Rename selected note and rewrite inbound wikilinks"
 	case modePublish:
 		return "Publish notes to a separate CommonMark directory"
+	case modeConfirmDelete:
+		return "Press D to confirm delete, any other key cancels"
 	default:
 		return ""
 	}
@@ -577,6 +609,8 @@ func (m Model) renderHelp() string {
 		"  n           Create a new note in the vault root",
 		"  c           Capture a quick entry into inbox.md",
 		"  R           Rename the selected note and rewrite inbound wikilinks",
+		"  o           Open the selected note in your configured editor",
+		"  D           Delete the selected note (prompts for confirmation)",
 		"  p           Publish the vault to a separate CommonMark directory",
 		"  r           Refresh the vault index",
 		"  ? or h      Open this help screen",
@@ -1234,6 +1268,35 @@ func publishCmd(root, outputDir string) tea.Cmd {
 		}
 		return actionMsg{status: status, warnings: warnings}
 	}
+}
+
+func deleteNoteCmd(vaultPath, relPath string) tea.Cmd {
+	return func() tea.Msg {
+		v, err := vault.Load(vaultPath)
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		warnings, err := v.DeleteNote(relPath)
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		status := "Deleted " + relPath
+		if len(warnings) > 0 {
+			status += fmt.Sprintf(" — %d inbound link(s) now unresolved, see details below", len(warnings))
+		}
+		return actionMsg{status: status, vaultPath: vaultPath, warnings: warnings}
+	}
+}
+
+func openInEditorCmd(editor, notePath, vaultPath string) tea.Cmd {
+	cmd := exec.Command(editor, notePath)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		if err != nil {
+			return actionMsg{err: fmt.Errorf("editor closed with error: %w", err)}
+		}
+		v, loadErr := vault.Load(vaultPath)
+		return reloadMsg{v: v, err: loadErr}
+	})
 }
 
 // parseNoteInput splits a note creation prompt value into a vault-relative

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spinchange/yanp-tui/internal/config"
 	"github.com/spinchange/yanp-tui/internal/vault"
 )
@@ -28,6 +29,46 @@ func TestPeriodicSummary(t *testing.T) {
 	got := periodicSummary(v, vault.PeriodicDaily, when)
 	if got != "daily/2026-03-30.md" {
 		t.Fatalf("unexpected periodic summary: %s", got)
+	}
+}
+
+func TestDeleteConfirmFlow(t *testing.T) {
+	v := &vault.Vault{
+		Notes: []*vault.Note{
+			{RelPath: "alpha.md", Title: "Alpha", Path: "alpha.md"},
+		},
+	}
+	m := Model{
+		vault:    v,
+		allNotes: v.Notes,
+		notes:    v.Notes,
+		mode:     modeBrowse,
+		selected: 0,
+	}
+
+	// Pressing D in browse mode enters confirm mode
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = next.(Model)
+	if m.mode != modeConfirmDelete {
+		t.Fatalf("expected modeConfirmDelete after D, got %v", m.mode)
+	}
+
+	// Any key other than D cancels and returns to browse
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = next.(Model)
+	if m.mode != modeBrowse {
+		t.Fatalf("expected modeBrowse after esc, got %v", m.mode)
+	}
+	if !strings.Contains(m.status, "cancel") {
+		t.Fatalf("expected cancel status, got %q", m.status)
+	}
+
+	// Re-enter confirm, then cancel with a non-D rune
+	m.mode = modeConfirmDelete
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m = next.(Model)
+	if m.mode != modeBrowse {
+		t.Fatalf("expected modeBrowse after non-D key, got %v", m.mode)
 	}
 }
 

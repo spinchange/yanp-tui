@@ -695,6 +695,33 @@ func (v *Vault) DraftNotes() []*Note {
 	return drafts
 }
 
+// InboundLinks returns the vault-relative paths of all notes that contain at
+// least one wikilink resolving to the note at relPath. The result is sorted
+// and deduplicated. Wikilinks inside code fences are not counted.
+func (v *Vault) InboundLinks(relPath string) []string {
+	seen := map[string]struct{}{}
+	for _, note := range v.Notes {
+		if note.RelPath == relPath {
+			continue
+		}
+		eachWikilinkOutsideCode(note.Body, func(target, _ string) {
+			if _, already := seen[note.RelPath]; already {
+				return
+			}
+			r := v.Resolve(target)
+			if r.Resolved && r.Note.RelPath == relPath {
+				seen[note.RelPath] = struct{}{}
+			}
+		})
+	}
+	result := make([]string, 0, len(seen))
+	for path := range seen {
+		result = append(result, path)
+	}
+	sort.Strings(result)
+	return result
+}
+
 // StaleNotes returns notes whose modification time is older than days days
 // before asOf. Returns nil if days is zero or negative.
 func (v *Vault) StaleNotes(days int, asOf time.Time) []*Note {
@@ -725,6 +752,37 @@ func (v *Vault) Capture(text string) error {
 	}
 	updated += entry
 	return os.WriteFile(inboxPath, []byte(updated), 0o644)
+}
+
+// DeleteNote removes the note at relPath from disk and from v.Notes.
+// It returns a warning for each note that has a wikilink pointing to the
+// deleted note; the delete still proceeds in that case.
+// Returns an error if the note is not found or the file cannot be removed.
+func (v *Vault) DeleteNote(relPath string) ([]string, error) {
+	note := v.NoteByRelPath(relPath)
+	if note == nil {
+		return nil, fmt.Errorf("note not found: %s", relPath)
+	}
+
+	sources := v.InboundLinks(relPath)
+	var warnings []string
+	for _, source := range sources {
+		warnings = append(warnings, fmt.Sprintf("%s links to deleted note", source))
+	}
+
+	if err := os.Remove(note.Path); err != nil {
+		return nil, err
+	}
+
+	kept := v.Notes[:0]
+	for _, n := range v.Notes {
+		if n.RelPath != relPath {
+			kept = append(kept, n)
+		}
+	}
+	v.Notes = kept
+
+	return warnings, nil
 }
 
 func (v *Vault) RenameNote(relPath, newTitle string) (string, []string, error) {
